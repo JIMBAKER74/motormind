@@ -4,6 +4,8 @@ import 'package:flutter_gemma/pigeon.g.dart';
 
 /// Stub for DartVectorStoreRepository on web/WASM platforms.
 /// Web uses WebVectorStoreRepository (wa-sqlite) instead.
+@Deprecated(
+    'Use QdrantVectorStoreRepository on native; will be removed in 1.0.')
 class DartVectorStoreRepository implements VectorStoreRepository {
   @override
   bool get isInitialized => false;
