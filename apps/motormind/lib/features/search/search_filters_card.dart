@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../advisor/display_agent.dart';
 import '../advisor/display_rules.dart';
+import '../chat/cards/card_shell.dart';
+import '../chat/chat_strings.dart';
 import 'search_service.dart';
 
 /// The live filters as a card inside the conversation. It is app-owned and
@@ -47,105 +49,76 @@ class SearchFiltersCard extends ConsumerWidget {
           onTap: () => svc.setExpanded(true),
         ),
       ),
-      FiltersCardMode.expanded => Card(
-        key: const Key('card-search_filters'),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      FiltersCardMode.expanded => CardShell(
+        id: 'search_filters',
+        padding: const EdgeInsets.all(12),
+        children: [
+          // The header carries the collapse control and the status, so it is
+          // a child row rather than the shell's title.
+          Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('What are we looking for?', style: theme.textTheme.titleMedium),
-                  ),
-                  if (!q.isEmpty)
-                    IconButton(
-                      key: const Key('filters-collapse'),
-                      tooltip: 'Collapse',
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.expand_less),
-                      onPressed: () => svc.setExpanded(false),
-                    ),
-                  const _SearchStatus(),
-                ],
-              ),
-              const SizedBox(height: 6),
-              _ChipRow(
-                chips: [
-                  _FilterChip(
-                    key: const Key('body-any'),
-                    label: 'Any type',
-                    selected: q.bodyStyle == null,
-                    onTap: () => svc.update({'body_style': null}),
-                  ),
-                  for (final b in SearchQuery.bodyStyles)
-                    _FilterChip(
-                      key: Key('body-$b'),
-                      label: SearchQuery.bodyStyleLabels[b]!,
-                      selected: q.bodyStyle == b,
-                      onTap: () => svc.update({'body_style': q.bodyStyle == b ? null : b}),
-                    ),
-                ],
-              ),
-              _ChipRow(
-                chips: [
-                  _FilterChip(
-                    key: const Key('price-any'),
-                    label: 'Any price',
-                    selected: q.maxPrice == null,
-                    onTap: () => svc.update({'max_price': null}),
-                  ),
-                  for (final p in priceCeilings)
-                    _FilterChip(
-                      key: Key('price-$p'),
-                      label: 'Under \$${p ~/ 1000}k',
-                      selected: q.maxPrice == p.toDouble(),
-                      onTap: () => svc.update({'max_price': q.maxPrice == p.toDouble() ? null : p}),
-                    ),
-                ],
-              ),
-              _ChipRow(
-                chips: [
-                  _FilterChip(
-                    key: const Key('miles-any'),
-                    label: 'Any miles',
-                    selected: q.maxMileage == null,
-                    onTap: () => svc.update({'max_mileage': null}),
-                  ),
-                  for (final m in mileageCeilings)
-                    _FilterChip(
-                      key: Key('miles-$m'),
-                      label: 'Under ${m ~/ 1000}k mi',
-                      selected: q.maxMileage == m,
-                      onTap: () => svc.update({'max_mileage': q.maxMileage == m ? null : m}),
-                    ),
-                ],
-              ),
-              const Divider(height: 16),
-              _ChipRow(
-                leading: Text('Look on', style: theme.textTheme.labelMedium),
-                chips: [
-                  for (final s in CuratedSites.all)
-                    _FilterChip(
-                      key: Key('site-${s.id}'),
-                      label: s.name,
-                      selected: search.siteId == s.id,
-                      onTap: () => svc.selectSite(s.id),
-                    ),
-                ],
-              ),
-              if (search.note case final note?)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    note,
-                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.error),
-                  ),
+              Expanded(child: Text(ChatStrings.filtersTitle, style: theme.textTheme.titleMedium)),
+              if (!q.isEmpty)
+                IconButton(
+                  key: const Key('filters-collapse'),
+                  tooltip: ChatStrings.collapse,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.expand_less),
+                  onPressed: () => svc.setExpanded(false),
+                ),
+              const _SearchStatus(),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _CeilingRow<String>(
+            keyPrefix: 'body',
+            anyLabel: ChatStrings.anyType,
+            anySelected: q.bodyStyle == null,
+            values: SearchQuery.bodyStyles,
+            labelOf: (b) => SearchQuery.bodyStyleLabels[b]!,
+            isSelected: (b) => q.bodyStyle == b,
+            onSelect: (b) => svc.update({'body_style': b}),
+          ),
+          _CeilingRow<int>(
+            keyPrefix: 'price',
+            anyLabel: ChatStrings.anyPrice,
+            anySelected: q.maxPrice == null,
+            values: priceCeilings,
+            labelOf: ChatStrings.underPrice,
+            isSelected: (p) => q.maxPrice == p.toDouble(),
+            onSelect: (p) => svc.update({'max_price': p}),
+          ),
+          _CeilingRow<int>(
+            keyPrefix: 'miles',
+            anyLabel: ChatStrings.anyMiles,
+            anySelected: q.maxMileage == null,
+            values: mileageCeilings,
+            labelOf: ChatStrings.underMiles,
+            isSelected: (m) => q.maxMileage == m,
+            onSelect: (m) => svc.update({'max_mileage': m}),
+          ),
+          const Divider(height: 16),
+          _ChipRow(
+            leading: Text(ChatStrings.lookOn, style: theme.textTheme.labelMedium),
+            chips: [
+              for (final s in CuratedSites.all)
+                _FilterChip(
+                  key: Key('site-${s.id}'),
+                  label: s.name,
+                  selected: search.siteId == s.id,
+                  onTap: () => svc.selectSite(s.id),
                 ),
             ],
           ),
-        ),
+          if (search.note case final note?)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                note,
+                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.error),
+              ),
+            ),
+        ],
       ),
     };
   }
@@ -159,10 +132,10 @@ class _SearchStatus extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(searchProvider);
     final text = search.applying
-        ? 'reading…'
+        ? ChatStrings.reading
         : switch (search.lastCount) {
             null => '',
-            final n => '$n matched',
+            final n => ChatStrings.matchedCount(n),
           };
     return Text(
       text,
@@ -170,6 +143,51 @@ class _SearchStatus extends ConsumerWidget {
       style: Theme.of(context).textTheme.labelSmall,
     );
   }
+}
+
+/// One filter field as a row of chips: an "any" chip (key `<prefix>-any`)
+/// that clears it, then one chip per value (key `<prefix>-<value>`). Tapping
+/// the selected value clears it too, so every chip is a toggle. [onSelect]
+/// gets null for "any". [anySelected] is the field being unset, which is not
+/// the same as no chip matching: the model can set a value the chips do not
+/// offer, and then nothing in the row is selected.
+class _CeilingRow<T> extends StatelessWidget {
+  const _CeilingRow({
+    required this.keyPrefix,
+    required this.anyLabel,
+    required this.anySelected,
+    required this.values,
+    required this.labelOf,
+    required this.isSelected,
+    required this.onSelect,
+  });
+
+  final String keyPrefix;
+  final String anyLabel;
+  final bool anySelected;
+  final List<T> values;
+  final String Function(T value) labelOf;
+  final bool Function(T value) isSelected;
+  final void Function(T? value) onSelect;
+
+  @override
+  Widget build(BuildContext context) => _ChipRow(
+    chips: [
+      _FilterChip(
+        key: Key('$keyPrefix-any'),
+        label: anyLabel,
+        selected: anySelected,
+        onTap: () => onSelect(null),
+      ),
+      for (final v in values)
+        _FilterChip(
+          key: Key('$keyPrefix-$v'),
+          label: labelOf(v),
+          selected: isSelected(v),
+          onTap: () => onSelect(isSelected(v) ? null : v),
+        ),
+    ],
+  );
 }
 
 class _ChipRow extends StatelessWidget {

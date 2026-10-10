@@ -25,7 +25,7 @@ final recipeStoreProvider = AsyncNotifierProvider<RecipeStore, Map<String, Readi
 /// self-check on a real page is marked broken here and stays broken until a
 /// newer one passes. [recordCheck] is called from inside a page read, so a
 /// read can rebuild whatever watches this store.
-class RecipeStore extends AsyncNotifier<Map<String, ReadingRecipe>> {
+final class RecipeStore extends AsyncNotifier<Map<String, ReadingRecipe>> {
   /// Site ids with a recipe in `assets/recipes/`; must match the file names.
   static const List<String> shipped = ['echopark', 'cars'];
 

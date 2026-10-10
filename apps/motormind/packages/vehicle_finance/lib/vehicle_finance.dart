@@ -8,6 +8,7 @@ export 'src/affordability.dart';
 export 'src/assumption.dart';
 export 'src/credit.dart';
 export 'src/deal.dart';
+export 'src/enums.dart';
 export 'src/lease.dart';
 export 'src/loan.dart';
 export 'src/money.dart';

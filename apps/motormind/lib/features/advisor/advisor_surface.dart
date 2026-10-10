@@ -11,7 +11,7 @@ import 'stage.dart';
 /// that holds the state against requests is planned, not built.
 final surfaceProvider = NotifierProvider<SurfaceNotifier, SurfaceState>(SurfaceNotifier.new);
 
-class SurfaceNotifier extends Notifier<SurfaceState> {
+final class SurfaceNotifier extends Notifier<SurfaceState> {
   @override
   SurfaceState build() => SurfaceState.collapsed;
 
@@ -162,9 +162,9 @@ class _Panel extends ConsumerWidget {
   }
 }
 
-/// The display agent's indicator (the design rule: the person only needs to know the screen may change): a small fixed mark that the
-/// screen may change, never a row. The tooltip says who decided and how long
-/// it took.
+/// The display agent's indicator: a small fixed mark, never a row, because
+/// the person only needs to know that the screen may change. The tooltip
+/// says who decided and how long it took.
 class _DisplayIndicator extends StatelessWidget {
   const _DisplayIndicator({required this.decision});
 

@@ -11,7 +11,7 @@ final disclosuresAcknowledgedProvider = NotifierProvider<DisclosuresAcknowledged
 
 /// Whether the current disclosure version has been acknowledged; the gate
 /// redirects until it has.
-class DisclosuresAcknowledgedNotifier extends Notifier<bool> {
+final class DisclosuresAcknowledgedNotifier extends Notifier<bool> {
   /// Preferences key holding the acknowledged disclosure version.
   static const ackKey = 'disclosures.acknowledgedVersion';
 

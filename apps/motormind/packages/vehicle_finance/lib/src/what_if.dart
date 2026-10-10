@@ -1,3 +1,10 @@
+/// One-variable alternatives to a deal (shorter term, more down, lower
+/// price), each a full estimate so its numbers can be verified.
+///
+/// No tool reaches this yet: it is kept for the planned `what_if` tool, which
+/// will let the model offer the alternatives without computing any of them.
+library;
+
 import 'assumption.dart';
 import 'deal.dart';
 import 'money.dart';

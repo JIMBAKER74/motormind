@@ -4,7 +4,9 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/widgets/compact_chip.dart';
 import '../browser/browser_service.dart';
+import '../chat/cards/card_shell.dart';
 import '../chat/cards/formatting.dart';
 import '../chat/chat_service.dart';
 import '../chat/chat_strings.dart';
@@ -31,72 +33,61 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final r = widget.shown.result?.result ?? const {};
-    final listings = (r['listings'] as List?)?.cast<Map>() ?? const [];
+    final listings = listingsOf(widget.shown.result);
     final signals = ref.watch(listingSignalsProvider);
     final signalsNotifier = ref.read(listingSignalsProvider.notifier);
-    final sites = {
-      for (final l in listings) BrowserService.siteIdFor('${l['sourceUrl']}') ?? 'web',
-    };
-    return Card(
-      key: const Key('card-vehicle_card'),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final sites = {for (final l in listings) BrowserService.siteIdFor(l.sourceUrl) ?? 'web'};
+    return CardShell(
+      id: 'vehicle_card',
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      children: [
+        // The header is a row (title plus the sites read), so it is a child
+        // rather than the shell's title.
+        Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.shown.request.title ??
-                        (listings.isEmpty ? 'No listings yet' : 'Listings'),
-                    style: theme.textTheme.titleMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Text(
-                  sites.map(CuratedSites.nameFor).join(' + '),
-                  style: theme.textTheme.labelSmall,
-                ),
-              ],
-            ),
-            if (listings.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  '${r['note'] ?? 'Open a listings page and Motormind can read it.'}',
-                  style: theme.textTheme.bodySmall,
-                ),
+            Expanded(
+              child: Text(
+                widget.shown.request.title ?? (listings.isEmpty ? 'No listings yet' : 'Listings'),
+                style: theme.textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            for (final l in listings)
-              if (ListingSignalsNotifier.keyFor(l) case final key
-                  when !signals.dismissed.contains(key))
-                _ListingTile(
-                  listing: l,
-                  signalKey: key,
-                  open: _open == key,
-                  viewed: signals.viewed.contains(key),
-                  liked: signals.liked.contains(key),
-                  onTap: () {
-                    setState(() => _open = _open == key ? null : key);
-                    if (_open == key) signalsNotifier.markViewed(l);
-                  },
-                  onLike: () => signalsNotifier.toggleLiked(l),
-                  onDismiss: () => signalsNotifier.dismiss(l),
-                  onOpenSite: () {
-                    final url = '${l['detailUrl'] ?? l['sourceUrl'] ?? ''}';
-                    if (BrowserService.isWebUrl(url)) {
-                      unawaited(ref.read(browserProvider.notifier).open(url));
-                    }
-                  },
-                  onAsk: () => ref
-                      .read(chatServiceProvider.notifier)
-                      .send(ChatStrings.monthlyCostOf('${l['title']}')),
-                ),
+            ),
+            Text(sites.map(CuratedSites.nameFor).join(' + '), style: theme.textTheme.labelSmall),
           ],
         ),
-      ),
+        if (listings.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '${r['note'] ?? 'Open a listings page and Motormind can read it.'}',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        for (final l in listings)
+          if (ListingSignalsNotifier.keyFor(l) case final key when !signals.dismissed.contains(key))
+            _ListingTile(
+              listing: l,
+              signalKey: key,
+              open: _open == key,
+              viewed: signals.viewed.contains(key),
+              liked: signals.liked.contains(key),
+              onTap: () {
+                setState(() => _open = _open == key ? null : key);
+                if (_open == key) signalsNotifier.markViewed(l);
+              },
+              onLike: () => signalsNotifier.toggleLiked(l),
+              onDismiss: () => signalsNotifier.dismiss(l),
+              onOpenSite: () {
+                final url = l.detailUrl ?? l.sourceUrl;
+                if (BrowserService.isWebUrl(url)) {
+                  unawaited(ref.read(browserProvider.notifier).open(url));
+                }
+              },
+              onAsk: () =>
+                  ref.read(chatServiceProvider.notifier).send(ChatStrings.monthlyCostOf(l.title)),
+            ),
+      ],
     );
   }
 }
@@ -120,7 +111,7 @@ class _ListingTile extends StatelessWidget {
     required this.onAsk,
   });
 
-  final Map listing;
+  final VehicleListing listing;
   final String signalKey;
   final bool open;
   final bool viewed;
@@ -135,16 +126,15 @@ class _ListingTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = listing;
-    final siteId = BrowserService.siteIdFor('${l['sourceUrl']}');
+    final siteId = BrowserService.siteIdFor(l.sourceUrl);
     final siteName = siteId == null ? 'web' : CuratedSites.nameFor(siteId);
     // The age is computed at build time; it refreshes when the card rebuilds,
     // which is enough for a session-scoped list.
-    final readAt = DateTime.tryParse('${l['readAt']}');
-    final age = readAt == null ? null : _age(DateTime.now().difference(readAt));
-    final image = l['imageUrl']?.toString();
+    final age = _age(DateTime.now().difference(l.readAt));
+    final image = l.imageUrl;
     final facts = [
-      if (l['price'] != null) money(l['price'], cents: false),
-      if (l['mileage'] != null) '${thousands(l['mileage'])} mi',
+      if (l.price case final price?) money(price, cents: false),
+      if (l.mileage case final mileage?) '${thousands(mileage)} mi',
     ].join(' · ');
     return InkWell(
       key: Key('listing-$signalKey'),
@@ -178,7 +168,7 @@ class _ListingTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${l['title']}',
+                        l.title,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: viewed ? FontWeight.normal : FontWeight.w600,
                         ),
@@ -186,7 +176,7 @@ class _ListingTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        [facts, siteName, ?age].where((s) => s.isNotEmpty).join(' · '),
+                        [facts, siteName, age].where((s) => s.isNotEmpty).join(' · '),
                         style: theme.textTheme.labelSmall,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -209,20 +199,19 @@ class _ListingTile extends StatelessWidget {
                   spacing: 6,
                   runSpacing: 2,
                   children: [
-                    ActionChip(
+                    CompactChip(
                       key: Key('open-site-$signalKey'),
                       label: Text('Open on $siteName'),
-                      visualDensity: VisualDensity.compact,
                       onPressed: onOpenSite,
                     ),
-                    ActionChip(
+                    CompactChip(
+                      key: Key('ask-cost-$signalKey'),
                       label: const Text('Monthly cost?'),
-                      visualDensity: VisualDensity.compact,
                       onPressed: onAsk,
                     ),
-                    ActionChip(
+                    CompactChip(
+                      key: Key('dismiss-$signalKey'),
                       label: const Text('Not this one'),
-                      visualDensity: VisualDensity.compact,
                       onPressed: onDismiss,
                     ),
                   ],

@@ -2,7 +2,51 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:test/test.dart';
 import 'package:vehicle_finance/vehicle_finance.dart';
 
+// PresentRequest and ComponentRegistry have their own file,
+// present_request_test.dart; this one covers the profile's labels and JSON.
 void main() {
+  test('applies an update_profile call without inventing labels', () {
+    const p = BuyerProfile();
+    final updated = p.applyUpdate({
+      'items': [
+        {'label': 'seats 7', 'kind': 'need'},
+        {'label': 'heated seats', 'kind': 'unlabeled'},
+      ],
+      'payment_ceiling': 450,
+      'credit_score': 690,
+      'trade_payoff': '8,000',
+      'shopping_mode': 'practical',
+    });
+    expect(updated.needs.single.label, 'seats 7');
+    expect(updated.unlabeled.single.label, 'heated seats');
+    expect(updated.paymentCeiling, 450);
+    expect(updated.creditBand, CreditBand.good);
+    expect(updated.tradePayoff, 8000);
+    expect(updated.mode, ShoppingMode.practical);
+    expect(updated.toPromptSummary(), contains('mentioned (unlabeled): heated seats'));
+  });
+
+  test('relabeling replaces the item, matched without regard to case', () {
+    final p = const BuyerProfile()
+        .applyUpdate({
+          'items': [
+            {'label': 'Heated Seats', 'kind': 'unlabeled'},
+          ],
+        })
+        .applyUpdate({
+          'items': [
+            {'label': 'heated seats', 'kind': 'need'},
+          ],
+        });
+    expect(p.items, hasLength(1));
+    expect(p.needs.single.kind, ItemKind.need);
+    expect(p.needs.single.label, 'heated seats');
+  });
+
+  test('empty profile summarizes as nothing known', () {
+    expect(const BuyerProfile().toPromptSummary(), 'nothing known yet');
+  });
+
   test('a credit_score overrides a credit_band given in the same call', () {
     final p = const BuyerProfile().applyUpdate({'credit_band': 'poor', 'credit_score': 790});
     expect(p.creditBand, CreditBand.excellent);
@@ -31,7 +75,7 @@ void main() {
     expect(p.creditBand, CreditBand.good);
   });
 
-  test('the prompt summary puts a dollar sign on every amount', () {
+  test('the prompt summary puts a dollar sign and thousands separators on every amount', () {
     const p = BuyerProfile(
       paymentCeiling: 450,
       downPayment: 2000,
@@ -42,12 +86,12 @@ void main() {
     );
     expect(
       p.toPromptSummary(),
-      'payment ceiling: \$450/mo; down payment: \$2000; gross income: \$5200/mo; '
-      'debt payments: \$300/mo; trade-in value: \$6200, payoff: \$8000',
+      'payment ceiling: \$450/mo; down payment: \$2,000; gross income: \$5,200/mo; '
+      'debt payments: \$300/mo; trade-in value: \$6,200, payoff: \$8,000',
     );
     expect(
       const BuyerProfile(tradePayoff: 8000).toPromptSummary(),
-      'trade-in value: unknown, payoff: \$8000',
+      'trade-in value: unknown, payoff: \$8,000',
     );
   });
 

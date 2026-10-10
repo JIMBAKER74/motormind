@@ -14,17 +14,5 @@ enum VehicleClass {
   pickup,
 
   /// Minivans and passenger vans.
-  van;
-
-  /// Parses a class name as written by a tool call or a stored profile,
-  /// ignoring case and surrounding whitespace.
-  ///
-  /// Throws an [ArgumentError] for anything that is not one of [values].
-  static VehicleClass parse(String value) {
-    final name = value.trim().toLowerCase();
-    return values.firstWhere(
-      (vehicleClass) => vehicleClass.name == name,
-      orElse: () => throw ArgumentError.value(value, 'value', 'unknown vehicle class'),
-    );
-  }
+  van,
 }

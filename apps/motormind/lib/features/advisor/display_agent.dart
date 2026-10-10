@@ -5,10 +5,12 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:vehicle_finance/vehicle_finance.dart';
 
 import '../../app/prefs.dart';
 import '../../services/advisor_model_service.dart';
 import '../../services/log.dart';
+import '../chat/cards/formatting.dart';
 import '../chat/chat_service.dart';
 import '../search/search_service.dart';
 import 'advisor_surface.dart';
@@ -186,12 +188,12 @@ class ScreenState {
 
 /// Rules first (the table in [DisplayRules]), a model second. Both produce
 /// the same decision shape, so they can be compared on the same inputs.
-abstract class DisplayAgent {
+abstract interface class DisplayAgent {
   Future<DisplayDecision> decide(ScreenState s, DisplayDecision defaults);
 }
 
 /// The rules table, applied synchronously.
-class RulesDisplayAgent implements DisplayAgent {
+final class RulesDisplayAgent implements DisplayAgent {
   const RulesDisplayAgent();
 
   /// The decision the rules make for [s].
@@ -237,8 +239,9 @@ final displayPromptProvider = FutureProvider<String>(
 /// prompt and closed after. Generation is serialized with the conversation
 /// by the engine, and on the FFI engine a session switch replays the other
 /// session's history, so this runs only while the conversation is idle and
-/// the cost is logged every time (TQ59: measure prompt size per turn).
-class ModelDisplayAgent implements DisplayAgent {
+/// the time it took is logged every time: the replay cost on a phone is
+/// still unmeasured, and the log is what will decide whether this stays on.
+final class ModelDisplayAgent implements DisplayAgent {
   ModelDisplayAgent(this.model, this.systemInstruction);
 
   /// Enough for one small JSON object.
@@ -285,10 +288,10 @@ class ModelDisplayAgent implements DisplayAgent {
     }
     final cue = m['cue']?.toString();
     return DisplayDecision(
-      filters: FiltersCardMode.values.asNameMap()[m['filters']?.toString()] ?? d.filters,
+      filters: enumByName(FiltersCardMode.values, m['filters']) ?? d.filters,
       notes: m['notes'] == null ? d.notes : m['notes'].toString() == 'shown',
-      stage: StageMode.values.asNameMap()[m['stage']?.toString()] ?? d.stage,
-      split: StageSplit.values.asNameMap()[m['split']?.toString()] ?? d.split,
+      stage: enumByName(StageMode.values, m['stage']) ?? d.stage,
+      split: enumByName(StageSplit.values, m['split']) ?? d.split,
       cue: cue == null || cue == 'null' || cue.isEmpty
           ? null
           : (cue.length > DisplayDecision.maxCueLength
@@ -307,12 +310,12 @@ final displayAgentModeProvider = NotifierProvider<DisplayAgentModeNotifier, Disp
   DisplayAgentModeNotifier.new,
 );
 
-class DisplayAgentModeNotifier extends Notifier<DisplayAgentMode> {
+final class DisplayAgentModeNotifier extends Notifier<DisplayAgentMode> {
   static const _key = 'display.agent';
 
   @override
   DisplayAgentMode build() =>
-      DisplayAgentMode.values.asNameMap()[ref.watch(sharedPreferencesProvider).getString(_key)] ??
+      enumByName(DisplayAgentMode.values, ref.watch(sharedPreferencesProvider).getString(_key)) ??
       DisplayAgentMode.rules;
 
   Future<void> set(DisplayAgentMode mode) async {
@@ -325,7 +328,7 @@ class DisplayAgentModeNotifier extends Notifier<DisplayAgentMode> {
 /// knows; providers do not).
 final keyboardOpenProvider = NotifierProvider<KeyboardOpenNotifier, bool>(KeyboardOpenNotifier.new);
 
-class KeyboardOpenNotifier extends Notifier<bool> {
+final class KeyboardOpenNotifier extends Notifier<bool> {
   @override
   bool build() => false;
 
@@ -340,7 +343,7 @@ class KeyboardOpenNotifier extends Notifier<bool> {
 /// person's manual choices are inputs, and they win.
 final displayProvider = NotifierProvider<DisplayController, DisplayDecision>(DisplayController.new);
 
-class DisplayController extends Notifier<DisplayDecision> {
+final class DisplayController extends Notifier<DisplayDecision> {
   /// A screen change settles for this long before the model is asked, so a
   /// run of taps costs one decision.
   static const decideDebounce = Duration(milliseconds: 800);
@@ -371,7 +374,7 @@ class DisplayController extends Notifier<DisplayDecision> {
     final chat = ref.watch(chatServiceProvider);
     final listings = stage.cards
         .where((c) => c.request.component.id == 'vehicle_card')
-        .fold<int>(0, (n, c) => n + ((c.result?.result?['listings'] as List?)?.length ?? 0));
+        .fold<int>(0, (n, c) => n + listingsOf(c.result).length);
     return ScreenState(
       surface: ref.watch(surfaceProvider),
       keyboardOpen: ref.watch(keyboardOpenProvider),

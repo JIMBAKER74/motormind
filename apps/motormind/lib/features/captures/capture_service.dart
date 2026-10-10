@@ -89,7 +89,7 @@ final captureStoreProvider = AsyncNotifierProvider<CaptureStore, List<PageCaptur
 
 /// The saved captures, newest first. A capture whose metadata cannot be read
 /// is skipped and logged rather than failing the whole list.
-class CaptureStore extends AsyncNotifier<List<PageCapture>> {
+final class CaptureStore extends AsyncNotifier<List<PageCapture>> {
   /// Punctuation stripped from the ISO timestamp to make a file stem.
   static final _idJunk = RegExp(r'[:.\-T]');
 

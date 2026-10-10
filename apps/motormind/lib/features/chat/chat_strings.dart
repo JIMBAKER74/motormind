@@ -31,6 +31,24 @@ abstract final class ChatStrings {
   static const hintFiltered = 'Tell me more: must-haves, a budget, a trade-in…';
   static const hintDefault = 'Tell me about the car you have in mind…';
 
+  // The filters card.
+  static const filtersTitle = 'What are we looking for?';
+  static const anyType = 'Any type';
+  static const anyPrice = 'Any price';
+  static const anyMiles = 'Any miles';
+  static const lookOn = 'Look on';
+  static const collapse = 'Collapse';
+  static const reading = 'reading…';
+
+  /// A price ceiling chip, in thousands ("Under \$35k").
+  static String underPrice(int dollars) => 'Under \$${dollars ~/ 1000}k';
+
+  /// A mileage ceiling chip, in thousands ("Under 50k mi").
+  static String underMiles(int miles) => 'Under ${miles ~/ 1000}k mi';
+
+  /// The search status once a page was read.
+  static String matchedCount(int n) => '$n matched';
+
   static String stoppedAfter(int seconds) =>
       'Stopped: Motormind went $seconds seconds without a word. Try a shorter message.';
 

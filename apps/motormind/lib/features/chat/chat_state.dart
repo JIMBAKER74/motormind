@@ -1,4 +1,5 @@
 import 'package:advisor_core/advisor_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Who wrote a transcript message.
 enum MessageRole {
@@ -37,16 +38,31 @@ class ChatMessage {
       : ChatMessage(role: role, text: text ?? this.text, streaming: streaming ?? this.streaming);
 }
 
+/// Hands out [ShownComponent.id]s. One counter per container, so a test's
+/// ids start from one and the id is owned by whoever presents the component
+/// rather than by a static that outlives every conversation.
+class ComponentIds {
+  int _next = 1;
+
+  /// The next unused id.
+  int next() => _next++;
+}
+
+final componentIdsProvider = Provider<ComponentIds>((ref) => ComponentIds());
+
 /// A card or prompt the model (or the app) asked to show, with the result it
 /// renders from, if any.
 class ShownComponent {
-  ShownComponent({required this.request, this.result, this.answered = false, int? id})
-    : id = id ?? _nextId++;
-
-  static int _nextId = 1;
+  const ShownComponent({
+    required this.id,
+    required this.request,
+    this.result,
+    this.answered = false,
+  });
 
   /// Identity that survives [copyWith], so "mark answered" finds the card
-  /// without relying on object identity.
+  /// without relying on object identity. Supplied by the presenter from
+  /// [ComponentIds].
   final int id;
 
   final PresentRequest request;
@@ -57,7 +73,24 @@ class ShownComponent {
   final bool answered;
 
   ShownComponent copyWith({bool? answered}) =>
-      ShownComponent(request: request, result: result, answered: answered ?? this.answered, id: id);
+      ShownComponent(id: id, request: request, result: result, answered: answered ?? this.answered);
+}
+
+/// Runs [args] (the `present` tool's shape) through the registry and wraps
+/// the accepted request as a component with [id]. Both the app's own
+/// starters and the live search go through here, so nothing the app shows
+/// can skip the check the model's requests get. Returns null, after an
+/// assertion in debug builds, when the registry refuses the request.
+ShownComponent? validatedComponent(
+  Map<String, Object?> args, {
+  required int id,
+  String? resultTool,
+  ToolResult? result,
+}) {
+  final v = PresentRequest.validate(args, resultTool: resultTool);
+  assert(v.request != null, 'component rejected by the registry: ${v.errors}');
+  final request = v.request;
+  return request == null ? null : ShownComponent(id: id, request: request, result: result);
 }
 
 /// Messages and components interleaved in the order they happened.

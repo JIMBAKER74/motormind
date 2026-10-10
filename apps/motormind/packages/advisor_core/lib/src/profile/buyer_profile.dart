@@ -1,5 +1,6 @@
 import 'package:vehicle_finance/vehicle_finance.dart';
 
+import '../format.dart';
 import '../parse.dart';
 
 /// How the person labeled something they are looking for.
@@ -31,19 +32,6 @@ enum ShoppingMode {
   buying,
 }
 
-/// Looks [raw] up in [values] by name, ignoring case and whitespace; null
-/// for null, for an unknown name and for anything that is not a name. Tool
-/// arguments and stored JSON both go through here so a stray value never
-/// throws out of a profile update or a restore.
-T? _byName<T extends Enum>(List<T> values, Object? raw) {
-  if (raw == null) return null;
-  final name = raw.toString().toLowerCase().trim();
-  for (final v in values) {
-    if (v.name == name) return v;
-  }
-  return null;
-}
-
 /// Something the person said they are looking for. The person labels it;
 /// Motormind only proposes a label and asks.
 class ProfileItem {
@@ -66,7 +54,7 @@ class ProfileItem {
   /// their defaults.
   factory ProfileItem.fromJson(Map<String, Object?> json) => ProfileItem(
     label: json['label']?.toString() ?? '',
-    kind: _byName(ItemKind.values, json['kind']) ?? ItemKind.unlabeled,
+    kind: enumByName(ItemKind.values, json['kind']) ?? ItemKind.unlabeled,
     source: json['source']?.toString() ?? 'user',
   );
 }
@@ -139,14 +127,14 @@ class BuyerProfile {
         if (raw is! Map) continue;
         final label = raw['label']?.toString().trim();
         if (label == null || label.isEmpty) continue;
-        final kind = _byName(ItemKind.values, raw['kind']) ?? ItemKind.unlabeled;
+        final kind = enumByName(ItemKind.values, raw['kind']) ?? ItemKind.unlabeled;
         newItems.removeWhere((i) => i.label.toLowerCase() == label.toLowerCase());
         newItems.add(
           ProfileItem(label: label, kind: kind, source: raw['source']?.toString() ?? 'user'),
         );
       }
     }
-    var band = _byName(CreditBand.values, args['credit_band']) ?? creditBand;
+    var band = enumByName(CreditBand.values, args['credit_band']) ?? creditBand;
     final score = parseTolerantNumber(args['credit_score']);
     if (score != null) band = creditBandForScore(score.round());
     return BuyerProfile(
@@ -159,7 +147,7 @@ class BuyerProfile {
           parseTolerantNumber(args['monthly_debt_payments']) ?? monthlyDebtPayments,
       tradeValue: parseTolerantNumber(args['trade_value']) ?? tradeValue,
       tradePayoff: parseTolerantNumber(args['trade_payoff']) ?? tradePayoff,
-      mode: _byName(ShoppingMode.values, args['shopping_mode']) ?? mode,
+      mode: enumByName(ShoppingMode.values, args['shopping_mode']) ?? mode,
     );
   }
 
@@ -168,12 +156,13 @@ class BuyerProfile {
   String toPromptSummary() {
     final parts = <String>[
       if (mode != null) 'shopping mode: ${mode!.name}',
-      if (paymentCeiling != null) 'payment ceiling: ${_money(paymentCeiling)}/mo',
-      if (downPayment != null) 'down payment: ${_money(downPayment)}',
+      if (paymentCeiling != null) 'payment ceiling: ${wholeDollars(paymentCeiling)}/mo',
+      if (downPayment != null) 'down payment: ${wholeDollars(downPayment)}',
       if (creditBand != null) 'credit band: ${creditBand!.name}',
-      if (monthlyGrossIncome != null) 'gross income: ${_money(monthlyGrossIncome)}/mo',
-      if (monthlyDebtPayments != null) 'debt payments: ${_money(monthlyDebtPayments)}/mo',
-      if (hasTrade) 'trade-in value: ${_money(tradeValue)}, payoff: ${_money(tradePayoff)}',
+      if (monthlyGrossIncome != null) 'gross income: ${wholeDollars(monthlyGrossIncome)}/mo',
+      if (monthlyDebtPayments != null) 'debt payments: ${wholeDollars(monthlyDebtPayments)}/mo',
+      if (hasTrade)
+        'trade-in value: ${wholeDollars(tradeValue)}, payoff: ${wholeDollars(tradePayoff)}',
       if (needs.isNotEmpty) 'needs: ${needs.map((i) => i.label).join(', ')}',
       if (wants.isNotEmpty) 'wants: ${wants.map((i) => i.label).join(', ')}',
       if (unlabeled.isNotEmpty)
@@ -181,11 +170,6 @@ class BuyerProfile {
     ];
     return parts.isEmpty ? 'nothing known yet' : parts.join('; ');
   }
-
-  /// Whole dollars with a `$`, or `unknown`, so every amount in the summary
-  /// reads the same way to the model.
-  static String _money(double? amount) =>
-      amount == null ? 'unknown' : '\$${amount.toStringAsFixed(0)}';
 
   /// Serializes for on-device storage; see [BuyerProfile.fromJson].
   Map<String, Object?> toJson() => {
@@ -210,11 +194,11 @@ class BuyerProfile {
     ],
     paymentCeiling: parseTolerantNumber(json['paymentCeiling']),
     downPayment: parseTolerantNumber(json['downPayment']),
-    creditBand: _byName(CreditBand.values, json['creditBand']),
+    creditBand: enumByName(CreditBand.values, json['creditBand']),
     monthlyGrossIncome: parseTolerantNumber(json['monthlyGrossIncome']),
     monthlyDebtPayments: parseTolerantNumber(json['monthlyDebtPayments']),
     tradeValue: parseTolerantNumber(json['tradeValue']),
     tradePayoff: parseTolerantNumber(json['tradePayoff']),
-    mode: _byName(ShoppingMode.values, json['mode']),
+    mode: enumByName(ShoppingMode.values, json['mode']),
   );
 }

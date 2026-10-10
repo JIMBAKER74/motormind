@@ -1,7 +1,9 @@
 import 'package:advisor_core/advisor_core.dart';
 import 'package:test/test.dart';
 
-final _now = DateTime(2026, 10, 6);
+import 'test_support.dart';
+
+final _now = testReadAt;
 
 VehicleListing _listing(
   String id,

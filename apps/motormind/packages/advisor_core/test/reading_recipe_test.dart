@@ -6,9 +6,22 @@ import 'package:html/dom.dart' show Element;
 import 'package:html/parser.dart' show parse;
 import 'package:test/test.dart';
 
+import 'test_support.dart';
+
 /// Reads a file by a path relative to the package root, which is where
-/// `dart test` runs; the recipe assets live two directories up in the app.
+/// `dart test` runs.
 String _read(String path) => File(path).readAsStringSync();
+
+/// The recipes the tests read. The app's `assets/recipes/` is the source of
+/// truth; these are copies, so the package tests run without the app checked
+/// out. `recipe fixtures match the app assets` fails when they drift.
+const _fixtureRecipes = ['cars', 'echopark'];
+
+/// Path of a recipe copy under `test/fixtures/`.
+String _fixturePath(String name) => 'test/fixtures/recipes/$name.json';
+
+/// Path of the app asset the copy was taken from, relative to the package.
+String _assetPath(String name) => '../../assets/recipes/$name.json';
 
 ReadingRecipe _recipe(String json) =>
     ReadingRecipe.fromJson((jsonDecode(json) as Map).cast<String, Object?>());
@@ -34,12 +47,36 @@ String _card(
     '${img ?? ''}';
 
 void main() {
-  final now = DateTime(2026, 10, 6);
-  final cars = _recipe(_read('../../assets/recipes/cars.json'));
+  final now = testReadAt;
+  final cars = _recipe(_read(_fixturePath('cars')));
   final html = _read('test/fixtures/cars_results_synthetic.html');
   const url = 'https://www.cars.com/shopping/results/';
   RecipeResult read(String html, {ReadingRecipe? recipe, int? max}) =>
       RecipeReader(maxListings: max ?? 40).read(html, recipe ?? cars, sourceUrl: url, now: now);
+
+  group('fixtures', () {
+    test('every fixture recipe parses', () {
+      for (final name in _fixtureRecipes) {
+        expect(_recipe(_read(_fixturePath(name))).siteId, name);
+      }
+    });
+
+    test('recipe fixtures match the app assets', () {
+      // The asset is only there when the whole app is checked out; a package
+      // checked out alone still runs the rest of the suite.
+      for (final name in _fixtureRecipes) {
+        final asset = File(_assetPath(name));
+        if (!asset.existsSync()) continue;
+        expect(
+          jsonDecode(_read(_fixturePath(name))),
+          jsonDecode(asset.readAsStringSync()),
+          reason:
+              '${_fixturePath(name)} differs from ${_assetPath(name)}; '
+              'copy the asset over the fixture',
+        );
+      }
+    });
+  });
 
   group('reading cards', () {
     test('a recipe reads cards, prices, mileage, images and links from HTML', () {

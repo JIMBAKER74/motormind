@@ -17,11 +17,14 @@ class BrowserState {
   final String? title;
   final bool loading;
 
-  BrowserState copyWith({String? url, String? title, bool? loading}) => BrowserState(
-    url: url ?? this.url,
-    title: title ?? this.title,
-    loading: loading ?? this.loading,
-  );
+  /// [url] and [title] may be set to null explicitly; leaving either out
+  /// keeps the current value.
+  BrowserState copyWith({Object? url = unset, Object? title = unset, bool? loading}) =>
+      BrowserState(
+        url: orKeep(url, this.url),
+        title: orKeep(title, this.title),
+        loading: loading ?? this.loading,
+      );
 }
 
 final browserProvider = NotifierProvider<BrowserService, BrowserState>(BrowserService.new);
@@ -52,7 +55,7 @@ typedef _PageSnapshot = ({String url, String title, String? image, String text, 
 ///
 /// Reading is user- or Motormind-initiated, one page at a time. Nothing
 /// is fetched in bulk and no page is loaded without a person behind it.
-class BrowserService extends Notifier<BrowserState> {
+final class BrowserService extends Notifier<BrowserState> {
   /// How long to wait for a navigation to finish before reading anyway.
   static const loadTimeout = Duration(seconds: 20);
 
@@ -116,6 +119,8 @@ class BrowserService extends Notifier<BrowserState> {
     state = state.copyWith(url: url, loading: true);
   }
 
+  /// A finished load with no address or title clears the old one rather than
+  /// leaving a stale address under a page that is not there any more.
   void onLoadStop(String? url, String? title) {
     state = state.copyWith(url: url, title: title, loading: false);
     final pending = _loaded;

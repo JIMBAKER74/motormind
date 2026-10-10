@@ -32,9 +32,10 @@ class PolicyFlag {
   String toString() => '${category.name}: "$excerpt"';
 }
 
-/// Flags sales language in a reply. Per the product decision (TQ15), flags are
-/// surfaced as a banner, not used to block the reply; the system prompt and
-/// the disclosures carry the policy, this is the smoke detector.
+/// Flags sales language in a reply. Flags are surfaced as a banner, not used
+/// to block the reply: a false positive that swallowed an honest answer would
+/// cost more trust than a flagged sentence. The system prompt and the
+/// disclosures carry the policy; this is the smoke detector.
 class PolicyCheck {
   /// Creates a check with the built-in rules.
   const PolicyCheck();

@@ -4,20 +4,18 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:motormind/app/app.dart';
-import 'package:motormind/app/prefs.dart';
 import 'package:motormind/features/advisor/display_agent.dart';
 import 'package:motormind/features/advisor/stage.dart';
-import 'package:motormind/features/advisor/stage_view.dart';
 import 'package:motormind/features/browser/browser_service.dart';
 import 'package:motormind/features/chat/chat_panel.dart';
 import 'package:motormind/features/chat/chat_service.dart';
 import 'package:motormind/features/chat/chat_strings.dart';
-import 'package:motormind/features/disclosures/disclosures_notifier.dart';
+import 'package:motormind/features/chat/starters.dart';
 import 'package:motormind/features/listings/listing_signals.dart';
 import 'package:motormind/features/search/search_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vehicle_finance/vehicle_finance.dart';
+
+import 'harness.dart';
 
 /// A model stand-in. Each branch is one behavior the tests need: a payment
 /// turn that calls the real tool and narrates the computed figure (so the
@@ -31,6 +29,12 @@ class ScriptedDriver implements ChatDriver {
   Completer<void> _idle = Completer<void>();
   Future<void> get idle => _idle.future;
 
+  /// Completes when [send] is entered and is renewed when that turn's stream
+  /// closes, so a test can act in the middle of a turn without a wall-clock
+  /// sleep.
+  Completer<void> _started = Completer<void>();
+  Future<void> get started => _started.future;
+
   /// Completed by [cancel]; the hanging branch waits on it, so an interrupt
   /// or the watchdog ends the turn the way the real engine would.
   Completer<void> _cancelled = Completer<void>();
@@ -40,8 +44,14 @@ class ScriptedDriver implements ChatDriver {
     prompts.add(userText);
     _idle = Completer<void>();
     _cancelled = Completer<void>();
+    if (!_started.isCompleted) _started.complete();
     return _reply(userText, onToolCall).asBroadcastStream()
-      ..listen(null, onDone: _idle.complete, onError: (_) => _idle.complete());
+      ..listen(null, onDone: _finish, onError: (_) => _finish());
+  }
+
+  void _finish() {
+    _idle.complete();
+    _started = Completer<void>();
   }
 
   Stream<DriverChunk> _reply(String userText, ToolCallHandler onToolCall) async* {
@@ -93,9 +103,11 @@ class ScriptedDriver implements ChatDriver {
 
 /// Two listings, so client-side filtering has something to filter. The URL
 /// is ignored on purpose: the fake stands in for whatever page the search
-/// opened, and the test asserts the app's own filtering.
-Future<PageExtract> fakeReader(String url) async {
+/// opened, and the test asserts the app's own filtering. A null [url] (a
+/// `read_page` of whatever is open) reads as the default site's results.
+Future<PageExtract> fakeReader({String? url}) async {
   final now = DateTime(2026, 10, 6);
+  url ??= CuratedSites.defaultSite.home;
   return PageExtract(
     url: url,
     title: 'Fake results',
@@ -125,37 +137,15 @@ Future<PageExtract> fakeReader(String url) async {
   );
 }
 
-final _crvKey = ListingSignalsNotifier.keyFor({'title': '2021 Honda CR-V EX', 'price': 27995.0});
-
-/// The web pane minus the platform webview.
-class WebPanePlaceholder extends StatelessWidget {
-  const WebPanePlaceholder({super.key});
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand(key: Key('browser-pane'));
-}
-
-Future<Widget> _app(ScriptedDriver? driver, {Duration? idleLimit}) async {
-  SharedPreferences.setMockInitialValues({
-    DisclosuresAcknowledgedNotifier.ackKey: Disclosures.gateVersion,
-  });
-  final prefs = await SharedPreferences.getInstance();
-  return ProviderScope(
-    overrides: [
-      sharedPreferencesProvider.overrideWithValue(prefs),
-      turnIdleLimitProvider.overrideWithValue(idleLimit),
-      searchDebounceProvider.overrideWithValue(Duration.zero),
-      webPaneBuilderProvider.overrideWithValue(() => const WebPanePlaceholder()),
-      pageReaderProvider.overrideWithValue(fakeReader),
-      if (driver != null)
-        chatDriverFactoryProvider.overrideWithValue((instruction) async {
-          driver.systemInstructions.add(instruction);
-          return driver;
-        }),
-    ],
-    child: const MotormindApp(),
-  );
-}
+final _crvKey = ListingSignalsNotifier.keyFor(
+  VehicleListing(
+    id: 'f1',
+    title: '2021 Honda CR-V EX',
+    sourceUrl: '',
+    readAt: DateTime(2026, 10, 6),
+    price: 27995,
+  ),
+);
 
 typedef Started = ({ScriptedDriver driver, ProviderContainer container});
 
@@ -166,7 +156,20 @@ Future<Started> _start(WidgetTester tester, {bool fullscreen = true, Duration? i
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.reset);
   final driver = ScriptedDriver();
-  await tester.pumpWidget(await _app(driver, idleLimit: idleLimit));
+  await tester.pumpWidget(
+    await motormindApp(
+      acknowledgedVersion: Disclosures.gateVersion,
+      overrides: [
+        turnIdleLimitProvider.overrideWithValue(idleLimit),
+        searchDebounceProvider.overrideWithValue(Duration.zero),
+        pageReaderProvider.overrideWithValue(fakeReader),
+        chatDriverFactoryProvider.overrideWithValue((instruction) async {
+          driver.systemInstructions.add(instruction);
+          return driver;
+        }),
+      ],
+    ),
+  );
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('surface-bubble')));
   await tester.pumpAndSettle();
@@ -176,7 +179,7 @@ Future<Started> _start(WidgetTester tester, {bool fullscreen = true, Duration? i
   }
   // start() loads prompt assets (real async I/O), which pumpAndSettle cannot
   // wait for; the same goes for every scripted turn below.
-  final container = ProviderScope.containerOf(tester.element(find.byKey(const Key('chat-start'))));
+  final container = containerOf(tester);
   await tester.runAsync(() => container.read(chatServiceProvider.notifier).start());
   await tester.pumpAndSettle();
   final state = container.read(chatServiceProvider);
@@ -190,11 +193,29 @@ Future<void> _turn(WidgetTester tester, Started s, Future<void> Function() act) 
   await tester.runAsync(() async {
     await act();
     await s.driver.idle;
-    while (s.container.read(chatServiceProvider).busy) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await _untilIdle(s.container);
   });
   await tester.pumpAndSettle();
+}
+
+/// Resolves once the service reports the turn over (`busy` false).
+Future<void> _untilIdle(ProviderContainer container) {
+  if (!container.read(chatServiceProvider).busy) return Future.value();
+  final done = Completer<void>();
+  late final ProviderSubscription<ChatState> sub;
+  sub = container.listen(chatServiceProvider, (_, next) {
+    if (!next.busy && !done.isCompleted) {
+      done.complete();
+      sub.close();
+    }
+  });
+  return done.future;
+}
+
+/// The search note the transcript should carry for the current search.
+String _searchNoteNow(ProviderContainer container) {
+  final s = container.read(searchProvider);
+  return ChatStrings.searchNote(s.query.describe(), s.siteName, s.lastCount!);
 }
 
 Future<void> _chooseMode(WidgetTester tester, Started s, String mode) =>
@@ -304,8 +325,9 @@ void main() {
       await tester.runAsync(() async {
         // The 'never answer' turn hangs; the chip tap during it must not
         // retire the prompt.
+        final started = s.driver.started;
         unawaited(s.container.read(chatServiceProvider.notifier).send('never answer'));
-        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await started;
         await s.container
             .read(chatServiceProvider.notifier)
             .choose('mode-browsing', 'Just looking');
@@ -323,9 +345,10 @@ void main() {
     ) async {
       final s = await _start(tester);
       await _chooseMode(tester, s, 'dreaming');
-      expect(find.textContaining('No price ceiling for a dream car'), findsOneWidget);
-      // The one-time hint that the screen is negotiable.
-      expect(find.textContaining('show, hide or change anything'), findsOneWidget);
+      // The dream-car starter offers kinds; the one-time hint says the
+      // screen is negotiable.
+      expect(find.byKey(const Key('choice-${Starters.kindPrefix}coupe')), findsOneWidget);
+      expect(find.text(Starters.negotiableNote), findsOneWidget);
       await _turn(tester, s, () => tester.tap(find.byKey(const Key('choice-kind-convertible'))));
       expect(s.container.read(searchProvider).query.bodyStyle, 'convertible');
     });
@@ -341,7 +364,10 @@ void main() {
       // by the fake site).
       expect(s.container.read(searchProvider).lastCount, 1);
       expect(s.container.read(listingStoreProvider).all, hasLength(2));
-      expect(find.text('1 matched'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('search-status'))).data,
+        ChatStrings.matchedCount(1),
+      );
       // Site choice sticks: the search re-applies there.
       await _tapFilter(tester, 'site-autotrader');
       expect(s.container.read(searchProvider).siteId, 'autotrader');
@@ -366,9 +392,11 @@ void main() {
       await _chooseMode(tester, s, 'browsing');
       await _tapFilter(tester, 'price-35000');
       await _tapFilter(tester, 'price-25000');
-      // Two searches in a row leave one note.
-      expect(find.textContaining('Looking for'), findsOneWidget);
-      expect(find.textContaining('under \$25k on EchoPark'), findsOneWidget);
+      // Two searches in a row leave one note, and it names the latest search.
+      final notes = s.container.read(chatServiceProvider).messages.where((m) => m.isSearchNote);
+      expect(notes, hasLength(1));
+      expect(s.container.read(searchProvider).query.maxPrice, 25000);
+      expect(find.text(_searchNoteNow(s.container)), findsOneWidget);
       // Fullscreen keeps the full card; docked collapses it to a summary with
       // a funnel, and the notes go out of view.
       expect(find.byKey(const Key('filters-summary')), findsNothing);
@@ -377,7 +405,7 @@ void main() {
       await tester.tap(find.byKey(const Key('surface-bubble')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('filters-summary')), findsOneWidget);
-      expect(find.textContaining('Looking for'), findsNothing);
+      expect(find.text(_searchNoteNow(s.container)), findsNothing);
       // The person can reopen it, and that choice sticks until a filter changes.
       await tester.tap(find.byKey(const Key('filters-summary')));
       await tester.pumpAndSettle();
@@ -406,17 +434,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('browser-pane')), findsNothing);
       // Every tile names its source and its age.
-      expect(find.textContaining('EchoPark · '), findsNWidgets(2));
+      expect(find.textContaining('${CuratedSites.nameFor('echopark')} · '), findsNWidgets(2));
       // Tapping a tile opens its detail in place and marks it viewed.
       await tester.tap(find.byKey(Key('listing-$_crvKey')));
       await tester.pumpAndSettle();
-      expect(find.text('Open on EchoPark'), findsOneWidget);
+      expect(find.byKey(Key('open-site-$_crvKey')), findsOneWidget);
       expect(s.container.read(listingSignalsProvider).viewed, hasLength(1));
       await tester.tap(find.byKey(Key('like-$_crvKey')));
       await tester.pumpAndSettle();
       expect(s.container.read(listingSignalsProvider).liked, hasLength(1));
       // "Not this one" hides the tile.
-      await tester.tap(find.text('Not this one'));
+      await tester.tap(find.byKey(Key('dismiss-$_crvKey')));
       await tester.pumpAndSettle();
       expect(find.byKey(Key('listing-$_crvKey')), findsNothing);
       // The person's flip to Web wins over the decision.
@@ -451,23 +479,27 @@ void main() {
     });
 
     testWidgets('the idle watchdog stops a silent turn and says so', (tester) async {
-      final s = await _start(tester, idleLimit: const Duration(milliseconds: 30));
+      const idleLimit = Duration(milliseconds: 30);
+      final s = await _start(tester, idleLimit: idleLimit);
       await tester.runAsync(() async {
         await s.container.read(chatServiceProvider.notifier).send('never answer');
       });
       await tester.pumpAndSettle();
-      expect(find.textContaining('Stopped: Motormind went'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('chat-error'))).data,
+        ChatStrings.stoppedAfter(idleLimit.inSeconds),
+      );
       expect(s.container.read(chatServiceProvider).busy, isFalse);
     });
 
     testWidgets('without a model, starting explains what to do', (tester) async {
-      await tester.pumpWidget(await _app(null));
+      // No driver factory: the service falls back to the model loader, which
+      // has nothing loaded.
+      await tester.pumpWidget(await motormindApp(acknowledgedVersion: Disclosures.gateVersion));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('surface-bubble')));
       await tester.pumpAndSettle();
-      final container = ProviderScope.containerOf(
-        tester.element(find.byKey(const Key('chat-start'))),
-      );
+      final container = containerOf(tester);
       await tester.runAsync(() => container.read(chatServiceProvider.notifier).start());
       await tester.pumpAndSettle();
       expect(find.text(ChatStrings.noModel), findsOneWidget);

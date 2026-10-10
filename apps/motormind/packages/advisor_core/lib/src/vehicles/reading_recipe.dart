@@ -1,6 +1,8 @@
 import 'package:html/dom.dart' show Document, Element;
 import 'package:html/parser.dart' show parse;
+import 'package:vehicle_finance/vehicle_finance.dart' show enumByName;
 
+import '../sentinel.dart';
 import 'listing.dart';
 import 'listing_parse.dart';
 
@@ -16,11 +18,7 @@ enum RecipeStatus {
   broken,
 }
 
-/// Marks an omitted `note` argument in [ReadingRecipe.withStatus], so that
-/// an explicit null can mean "clear the note".
-const _keepNote = Object();
-
-/// A per-site reading recipe: data, not code . It names the
+/// A per-site reading recipe: data, not code. It names the
 /// listing card element, where each field sits inside it, and how to tell
 /// whether the read worked. Shipped as a JSON asset, replaceable at runtime,
 /// so a repaired recipe (from a person today, a help service later)
@@ -66,11 +64,9 @@ class ReadingRecipe {
   factory ReadingRecipe.fromJson(Map<String, Object?> json) {
     final rawFields = _require<Map>(json, 'fields', 'recipe');
     final rawStatus = json['status'];
-    final status = switch (rawStatus) {
-      null => RecipeStatus.verified,
-      String() => RecipeStatus.values.asNameMap()[rawStatus],
-      _ => null,
-    };
+    final status = rawStatus == null
+        ? RecipeStatus.verified
+        : enumByName(RecipeStatus.values, rawStatus);
     if (status == null) {
       throw FormatException(
         'recipe: unknown status "$rawStatus"; expected one of '
@@ -109,14 +105,14 @@ class ReadingRecipe {
   /// Returns a copy with [status] replaced. [note] replaces the note when
   /// given, clears it when explicitly null, and is kept when omitted, so a
   /// repair can wipe a stale failure message.
-  ReadingRecipe withStatus(RecipeStatus status, {Object? note = _keepNote}) => ReadingRecipe(
+  ReadingRecipe withStatus(RecipeStatus status, {Object? note = unset}) => ReadingRecipe(
     siteId: siteId,
     version: version,
     card: card,
     fields: fields,
     selfCheck: selfCheck,
     status: status,
-    note: identical(note, _keepNote) ? this.note : note as String?,
+    note: orKeep(note, this.note),
   );
 }
 

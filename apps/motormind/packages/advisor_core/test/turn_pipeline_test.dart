@@ -111,8 +111,20 @@ void main() {
 
   test('results and userInputs are read-only views', () {
     final pipeline = TurnPipeline(driver: FakeDriver([]));
-    expect(() => pipeline.results['x'] = null as dynamic, throwsA(anything));
+    const stray = ToolResult(id: 'x', tool: 'estimate_payment', args: {});
+    expect(() => pipeline.results['x'] = stray, throwsUnsupportedError);
     expect(() => pipeline.userInputs.add({}), throwsUnsupportedError);
+  });
+
+  test('setShoppingMode changes the mode and nothing else, outside any turn', () {
+    final pipeline = TurnPipeline(
+      driver: FakeDriver([]),
+      profile: const BuyerProfile(paymentCeiling: 450),
+    );
+    pipeline.setShoppingMode(ShoppingMode.buying);
+    expect(pipeline.profile.mode, ShoppingMode.buying);
+    expect(pipeline.profile.paymentCeiling, 450);
+    expect(pipeline.userInputs, isEmpty, reason: 'a mode is not a number the person gave');
   });
 
   test('an invented number is caught, regenerated once, then templated', () async {

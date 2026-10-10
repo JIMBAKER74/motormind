@@ -14,7 +14,7 @@ const bool kAnalyticsEnabled = bool.fromEnvironment('MOTORMIND_ANALYTICS');
 /// list so no free text and no financial value can ever be logged. Every
 /// call is fire-and-forget and never throws. Instrumentation of screens and
 /// turns lands with VA-7.1.3; today only [init] runs.
-abstract class Analytics {
+abstract interface class Analytics {
   /// Prepares the backend; a no-op in demo builds.
   Future<void> init();
 
@@ -25,7 +25,7 @@ abstract class Analytics {
   Future<void> event(String name, {Map<String, Object>? params});
 }
 
-class NoopAnalytics implements Analytics {
+final class NoopAnalytics implements Analytics {
   @override
   Future<void> init() async {}
 
@@ -36,7 +36,7 @@ class NoopAnalytics implements Analytics {
   Future<void> event(String name, {Map<String, Object>? params}) async {}
 }
 
-class FirebaseAnalyticsService implements Analytics {
+final class FirebaseAnalyticsService implements Analytics {
   FirebaseAnalytics? _fa;
 
   static const Set<String> allowedParams = {

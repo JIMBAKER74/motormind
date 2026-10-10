@@ -8,7 +8,7 @@ import '../models/model_catalog.dart';
 
 /// The real [ChatDriver]: one `InferenceChat` over the loaded model, with the
 /// tools declared and the system prompt installed.
-class EdgeAiChatDriver implements ChatDriver {
+final class EdgeAiChatDriver implements ChatDriver {
   EdgeAiChatDriver._(this._chat);
 
   /// A reply plus a short narration; longer answers on a phone cost more

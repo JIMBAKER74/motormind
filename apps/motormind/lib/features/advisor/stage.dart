@@ -50,7 +50,7 @@ class StageState {
 /// brings the web forward; the person can flip between them any time.
 final stageProvider = NotifierProvider<StageNotifier, StageState>(StageNotifier.new);
 
-class StageNotifier extends Notifier<StageState> {
+final class StageNotifier extends Notifier<StageState> {
   @override
   StageState build() => const StageState();
 

@@ -1,9 +1,11 @@
 import 'listing.dart';
 import 'search_query.dart';
 
-/// Listings read during this session (Q45: session scope; saving across
-/// conversations is a separate, explicit action). `find_vehicles` searches
-/// here. Listings carry `readAt` so staleness can be shown later (DD-R15).
+/// Listings read during this session. Session scope is deliberate: a listing
+/// is a snapshot of a page, so keeping it across conversations is a separate,
+/// explicit action the person takes, not something the store does on its
+/// own. `find_vehicles` searches here. Listings carry `readAt` so a card can
+/// say how old its figures are once a listing outlives the page read.
 class ListingStore {
   final List<VehicleListing> _all = [];
 

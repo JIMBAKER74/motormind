@@ -72,7 +72,7 @@ class ModelsState {
 
 /// The SDK seam. The real implementation calls `FlutterEdgeAi`; tests supply
 /// a fake so the notifier's state machine is testable on the Dart VM.
-abstract class EdgeAiGateway {
+abstract interface class EdgeAiGateway {
   /// Starts the engine once; later calls are no-ops.
   Future<void> initialize();
 
@@ -94,7 +94,7 @@ abstract class EdgeAiGateway {
   Future<InferenceModel> load(AdvisorModelSpec spec, {String? token});
 }
 
-class FlutterEdgeAiGateway implements EdgeAiGateway {
+final class FlutterEdgeAiGateway implements EdgeAiGateway {
   bool _initialized = false;
 
   @override
@@ -152,7 +152,7 @@ final advisorModelServiceProvider = AsyncNotifierProvider<AdvisorModelService, M
 /// One instance owns the SDK lifecycle: downloads, the loaded model and the
 /// switch between models. No other code touches `FlutterEdgeAi` directly
 /// (backlog VA-1.1.1).
-class AdvisorModelService extends AsyncNotifier<ModelsState> {
+final class AdvisorModelService extends AsyncNotifier<ModelsState> {
   /// Sentences for the person; the engine's own text goes to the log.
   static const _downloadFailed = 'The download failed. Check the connection and retry.';
   static const _loadFailed = 'The model could not be loaded. Free some memory and retry.';

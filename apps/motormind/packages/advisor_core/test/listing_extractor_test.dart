@@ -1,6 +1,8 @@
 import 'package:advisor_core/advisor_core.dart';
 import 'package:test/test.dart';
 
+import 'test_support.dart';
+
 const _resultsPage = '''
 Filters
 Sort by: Best match
@@ -63,7 +65,7 @@ Price
 ''';
 
 void main() {
-  final now = DateTime(2026, 10, 5);
+  final now = testReadAt;
   List<VehicleListing> extract(String text, {int? max}) =>
       (max == null ? const ListingExtractor() : ListingExtractor(maxListings: max)).extract(
         text,

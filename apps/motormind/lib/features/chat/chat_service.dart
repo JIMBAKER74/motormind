@@ -10,6 +10,7 @@ import '../advisor/stage.dart';
 import '../listings/listing_signals.dart';
 import '../models/model_catalog.dart';
 import '../search/search_service.dart';
+import 'cards/formatting.dart';
 import 'chat_state.dart';
 import 'chat_strings.dart';
 import 'edge_ai_chat_driver.dart';
@@ -31,12 +32,14 @@ final turnIdleLimitProvider = Provider<Duration?>((ref) => const Duration(second
 
 final chatServiceProvider = NotifierProvider<ChatService, ChatState>(ChatService.new);
 
-class ChatService extends Notifier<ChatState> {
+final class ChatService extends Notifier<ChatState> {
   TurnPipeline? _pipeline;
   ChatDriver? _driver;
 
   /// The turn in flight, so an interrupt can wait for it to wind down.
   Future<void>? _turn;
+
+  ComponentIds get _componentIds => ref.read(componentIdsProvider);
 
   @override
   ChatState build() {
@@ -93,9 +96,16 @@ class ChatService extends Notifier<ChatState> {
       }
       await _driver?.close();
       _driver = driver;
-      _pipeline = TurnPipeline(driver: driver, profile: profile, external: ExternalTools(ref).call);
+      _pipeline = TurnPipeline(
+        driver: driver,
+        profile: profile,
+        external: ref.read(externalToolsProvider).call,
+      );
       // A fresh conversation: every flag from the previous one is dropped.
-      state = ChatState(ready: true, timeline: [ComponentEntry(Starters.openingPrompt(profile))]);
+      state = ChatState(
+        ready: true,
+        timeline: [ComponentEntry(Starters.openingPrompt(profile, _componentIds))],
+      );
     } on Exception catch (e) {
       logDev('start failed: $e');
       state = state.copyWith(busy: false, error: ChatStrings.startFailed);
@@ -197,7 +207,11 @@ class ChatService extends Notifier<ChatState> {
                 !request.component.isInteraction &&
                 surface != SurfaceState.fullscreen &&
                 request.surface != SurfaceState.fullscreen;
-            final shown = ShownComponent(request: request, result: result);
+            final shown = ShownComponent(
+              id: _componentIds.next(),
+              request: request,
+              result: result,
+            );
             if (toStage) {
               ref.read(stageProvider.notifier).show(shown);
             } else {
@@ -265,13 +279,10 @@ class ChatService extends Notifier<ChatState> {
     }
   }
 
-  /// The listings currently on the stage, as the maps the cards render from.
-  List<Map<String, Object?>> _listingsOnStage() => [
+  /// The listings currently on the stage.
+  List<VehicleListing> _listingsOnStage() => [
     for (final c in ref.read(stageProvider).cards)
-      if (c.request.component.id == 'vehicle_card')
-        ...((c.result?.result?['listings'] as List?) ?? const []).map(
-          (l) => (l as Map).cast<String, Object?>(),
-        ),
+      if (c.request.component.id == 'vehicle_card') ...listingsOf(c.result),
   ];
 
   String _silentTurnText(List<ToolResult> results) {
@@ -323,12 +334,11 @@ class ChatService extends Notifier<ChatState> {
     final opening = Starters.openingChoices[id];
     if (opening != null) {
       final (mode, sentence) = opening;
-      _pipeline?.profile = (_pipeline?.profile ?? const BuyerProfile()).applyUpdate({
-        'shopping_mode': mode.name,
-      });
+      _pipeline?.setShoppingMode(mode);
       // The live filters join the conversation the moment a mode is chosen, so
-      // the screen responds before the model has said a word (Q43, DD
-      // principle 3). The card is app-owned: it tracks the search state.
+      // the screen responds before the model has said a word: the person
+      // should never wait on generation for something the app already knows.
+      // The card is app-owned: it tracks the search state.
       // send() is synchronous up to its first await, so the card lands after
       // the sentence and before the reply bubble fills in.
       final turn = send(withExtra(sentence), filtersCardComing: true);
@@ -338,10 +348,10 @@ class ChatService extends Notifier<ChatState> {
         state = state.copyWith(
           timeline: [
             ...state.timeline,
-            ComponentEntry(Starters.filtersCard()),
+            ComponentEntry(Starters.filtersCard(_componentIds)),
             // Mode starters: the app says what it did and asks,
             // so the person can correct it instead of living with a default.
-            if (Starters.forMode(mode) case final starter?) ComponentEntry(starter),
+            if (Starters.forMode(mode, _componentIds) case final starter?) ComponentEntry(starter),
             const MessageEntry(
               ChatMessage(role: MessageRole.system, text: Starters.negotiableNote),
             ),

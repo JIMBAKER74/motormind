@@ -1,5 +1,7 @@
+import '../parse.dart';
+
 /// A number found in text, with its original spelling and position.
-class NumberMention {
+final class NumberMention {
   /// Creates a mention of [raw], parsed as [value], found at [offset].
   const NumberMention({required this.raw, required this.value, required this.offset});
 
@@ -22,7 +24,7 @@ class NumberMention {
 
 /// The outcome of a [NarrationGuard.check]: every number in the reply and the
 /// subset that matched no tool result or user input.
-class GuardReport {
+final class GuardReport {
   /// Creates a report from all [mentions] and the [unmatched] subset.
   const GuardReport({required this.mentions, required this.unmatched});
 
@@ -78,21 +80,15 @@ class NarrationGuard {
     r'|(?<!\w)[\$]?\d+(?:\.\d+)?%?(?:\s?[kK](?!\w))?(?!\w|\.\d)',
   );
 
-  /// Extracts numeric mentions from [text].
+  /// Extracts numeric mentions from [text]. The pattern decides what counts
+  /// as a figure; the shared parser decides what it is worth, so "22k" here
+  /// and "22k" in a tool argument are the same number.
   List<NumberMention> extract(String text) {
     final out = <NumberMention>[];
     for (final m in _numberPattern.allMatches(text)) {
       final raw = m.group(0)!;
-      var cleaned = raw.replaceAll(RegExp(r'[\$,%\s]'), '');
-      var multiplier = 1.0;
-      if (cleaned.endsWith('k') || cleaned.endsWith('K')) {
-        cleaned = cleaned.substring(0, cleaned.length - 1);
-        multiplier = 1000;
-      }
-      final v = double.tryParse(cleaned);
-      if (v == null) continue;
-      var value = v * multiplier;
-      if (raw.endsWith('%')) value = v / 100;
+      final value = parseTolerantNumber(raw);
+      if (value == null) continue;
       out.add(NumberMention(raw: raw, value: value, offset: m.start));
     }
     return out;

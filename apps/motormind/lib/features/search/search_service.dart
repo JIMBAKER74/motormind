@@ -64,12 +64,15 @@ class SearchState {
   );
 }
 
-/// Reads a page for the search: the web pane by default; tests inject a fake.
-typedef PageReader = Future<PageExtract> Function(String url);
+/// Reads a page: the one at [url], or the page the person has open when
+/// [url] is null. The web pane by default; tests inject a fake. Both the
+/// live search and the model's `read_page` go through this seam, so a test
+/// can stand in for the pane in one place.
+typedef PageReader = Future<PageExtract> Function({String? url});
 
 final pageReaderProvider = Provider<PageReader>(
   (ref) =>
-      (url) => ref.read(browserProvider.notifier).readPage(url: url),
+      ({url}) => ref.read(browserProvider.notifier).readPage(url: url),
 );
 
 /// How long a run of chip taps is allowed to settle before the page loads.
@@ -82,7 +85,7 @@ final searchDebounceProvider = Provider<Duration>((ref) => const Duration(millis
 /// model.
 final searchProvider = NotifierProvider<SearchService, SearchState>(SearchService.new);
 
-class SearchService extends Notifier<SearchState> {
+final class SearchService extends Notifier<SearchState> {
   Timer? _debounce;
 
   /// Bumped per apply so a slower, older read cannot overwrite a newer one.
@@ -149,7 +152,7 @@ class SearchService extends Notifier<SearchState> {
     state = state.copyWith(applying: true, clearNote: true);
     ref.read(stageProvider.notifier).showWeb();
     try {
-      final extract = await ref.read(pageReaderProvider)(url);
+      final extract = await ref.read(pageReaderProvider)(url: url);
       if (gen != _generation) return; // superseded
       final store = ref.read(listingStoreProvider)..addAll(extract.listings);
       final results = store.searchQuery(q);
@@ -181,22 +184,18 @@ class SearchService extends Notifier<SearchState> {
         if (results.isEmpty) 'note': ChatStrings.noListingsOnPage,
       },
     );
-    final v = PresentRequest.validate({
-      'component': 'vehicle_card',
-      'result_id': result.id,
-      'title': 'Listings · ${q.describe()}',
-    }, resultTool: AdvisorTools.findVehicles);
-    assert(v.errors.isEmpty, 'listings card rejected by the registry: ${v.errors}');
-    final request = v.request;
-    if (request == null) return;
+    final shown = validatedComponent(
+      {'component': 'vehicle_card', 'result_id': result.id, 'title': 'Listings · ${q.describe()}'},
+      id: ref.read(componentIdsProvider).next(),
+      resultTool: AdvisorTools.findVehicles,
+      result: result,
+    );
+    if (shown == null) return;
     final stage = ref.read(stageProvider.notifier);
     // One listings card at a time: the newest search replaces the last.
     stage.removeWhere((s) => s.result?.tool == AdvisorTools.findVehicles);
     // Cards come forward as soon as a search finds something; the page
     // stays one tap away, and the display decision may still choose it.
-    stage.show(
-      ShownComponent(request: request, result: result),
-      bringForward: results.isNotEmpty,
-    );
+    stage.show(shown, bringForward: results.isNotEmpty);
   }
 }

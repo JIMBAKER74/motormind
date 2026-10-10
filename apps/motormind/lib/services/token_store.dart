@@ -4,13 +4,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// Secure storage for the Hugging Face token (backlog VA-1.3.2). The value is never
 /// logged, never put in analytics, and only sent as a bearer header to the
 /// model host.
-abstract class TokenStore {
+abstract interface class TokenStore {
   Future<String?> read();
   Future<void> write(String token);
   Future<void> clear();
 }
 
-class SecureTokenStore implements TokenStore {
+final class SecureTokenStore implements TokenStore {
   SecureTokenStore([FlutterSecureStorage? storage])
     : _storage = storage ?? const FlutterSecureStorage();
 
@@ -28,7 +28,7 @@ class SecureTokenStore implements TokenStore {
 }
 
 /// In-memory store for tests and for platforms without secure storage.
-class MemoryTokenStore implements TokenStore {
+final class MemoryTokenStore implements TokenStore {
   String? _token;
 
   @override

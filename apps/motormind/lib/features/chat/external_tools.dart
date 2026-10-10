@@ -5,10 +5,14 @@ import '../advisor/stage.dart';
 import '../browser/browser_service.dart';
 import '../search/search_service.dart';
 
+/// The app's [ExternalTools], so a test can drive a tool through a
+/// [ProviderContainer] with the seams overridden.
+final externalToolsProvider = Provider<ExternalTools>(ExternalTools.new);
+
 /// The tools the turn pipeline does not own because they need the app: the
 /// web pane and the live search. The pipeline calls [call] by tool name and
 /// hands the returned map to the model as the tool's result.
-class ExternalTools {
+final class ExternalTools {
   const ExternalTools(this._ref);
 
   final Ref _ref;
@@ -57,7 +61,7 @@ class ExternalTools {
     _ref.read(stageProvider.notifier).showWeb();
     final PageExtract extract;
     try {
-      extract = await _ref.read(browserProvider.notifier).readPage(url: url);
+      extract = await _ref.read(pageReaderProvider)(url: url);
     } on PageChallengeException catch (e) {
       return {'error': e.message};
     }
