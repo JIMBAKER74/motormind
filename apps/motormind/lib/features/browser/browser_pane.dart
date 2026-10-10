@@ -35,8 +35,9 @@ class _BrowserPaneState extends ConsumerState<BrowserPane> {
           onPageFinished: (url) async => service.onLoadStop(url, await _controller.getTitle()),
           // Read-only browsing policy (VA-6.1.1): web pages only; no external
           // schemes, no downloads.
-          onNavigationRequest: (req) =>
-              req.url.startsWith('http') ? NavigationDecision.navigate : NavigationDecision.prevent,
+          onNavigationRequest: (req) => BrowserService.isWebUrl(req.url)
+              ? NavigationDecision.navigate
+              : NavigationDecision.prevent,
         ),
       )
       ..loadRequest(Uri.parse(initial));

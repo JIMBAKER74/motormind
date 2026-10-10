@@ -268,4 +268,35 @@ void main() {
       expect(r.fields, same(cars.fields));
     });
   });
+
+  group('recipe patterns are bounded', () {
+    test('a nested quantifier is refused before it can run', () {
+      expect(
+        () => checkRecipePattern(r'(a+)+$', 'pattern'),
+        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('nests'))),
+      );
+    });
+
+    test('an over-long or invalid pattern is refused', () {
+      expect(() => checkRecipePattern('a' * 200, 'pattern'), throwsFormatException);
+      expect(() => checkRecipePattern('(unclosed', 'pattern'), throwsFormatException);
+    });
+
+    test('a recipe JSON with a dangerous pattern fails to parse', () {
+      expect(
+        () => ReadingRecipe.fromJson({
+          'siteId': 'cars',
+          'card': 'div',
+          'fields': {
+            'title': {'selector': 'h2', 'pattern': r'(\w+\s*)*$'},
+          },
+        }),
+        throwsFormatException,
+      );
+    });
+
+    test('an ordinary pattern passes unchanged', () {
+      expect(checkRecipePattern(r'\$([\d,]+)', 'price'), r'\$([\d,]+)');
+    });
+  });
 }

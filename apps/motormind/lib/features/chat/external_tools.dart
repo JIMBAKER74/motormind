@@ -44,10 +44,20 @@ class ExternalTools {
   /// Reads the page the person has open (or the one the model names). A
   /// human-verification page is reported, never worked around.
   Future<Map<String, Object?>> _readPage(Map<String, Object?> args) async {
+    // The model may name a page to open, but only on a curated site; the
+    // person can browse anywhere by hand and ask for the page they have open.
+    final url = args['url']?.toString();
+    if (url != null && url.isNotEmpty && BrowserService.siteIdFor(url) == null) {
+      return {
+        'error':
+            'read_page can open pages on ${CuratedSites.all.map((s) => s.name).join(', ')} only; '
+            'to read another site, ask the person to open it in the web pane first.',
+      };
+    }
     _ref.read(stageProvider.notifier).showWeb();
     final PageExtract extract;
     try {
-      extract = await _ref.read(browserProvider.notifier).readPage(url: args['url']?.toString());
+      extract = await _ref.read(browserProvider.notifier).readPage(url: url);
     } on PageChallengeException catch (e) {
       return {'error': e.message};
     }

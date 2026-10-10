@@ -56,6 +56,12 @@ class RecipeStore extends AsyncNotifier<Map<String, ReadingRecipe>> {
           final r = ReadingRecipe.fromJson(
             (jsonDecode(await f.readAsString()) as Map).cast<String, Object?>(),
           );
+          // A file on disk may only replace a recipe for a site the app
+          // knows; anything else is ignored and logged.
+          if (CuratedSites.byId(r.siteId) == null) {
+            logDev('recipe override ${f.path} names an unknown site ${r.siteId}; ignored');
+            continue;
+          }
           final current = out[r.siteId];
           if (current == null || r.version >= current.version) out[r.siteId] = r;
         }

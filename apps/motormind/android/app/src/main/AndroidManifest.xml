@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No cloud or adb backup: the documents folder holds captured pages and
+         the secure store holds a token; neither belongs in a backup. -->
     <application
-        android:label="motormind"
+        android:allowBackup="false"
+        android:label="Motormind AI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

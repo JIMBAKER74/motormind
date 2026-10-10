@@ -178,3 +178,19 @@ Analytics is compiled in only when the build passes the flag; the demo flavor sh
 ```bash
 flutter run --dart-define=MOTORMIND_ANALYTICS=true
 ```
+
+## Release signing (Android)
+
+A release build signs with the debug key unless `apps/motormind/android/key.properties`
+exists (it is git-ignored, as are `*.jks` and `*.keystore`):
+
+```properties
+storeFile=../keys/motormind-release.jks
+storePassword=…
+keyAlias=motormind
+keyPassword=…
+```
+
+Create the keystore once with `keytool -genkey -v -keystore motormind-release.jks -keyalg RSA
+-keysize 2048 -validity 10000 -alias motormind` and keep it outside the repository. A build
+signed with the debug key is for local `flutter run --release` only.

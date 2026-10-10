@@ -280,7 +280,7 @@ class TurnPipeline {
     String name,
     Map<String, Object?> args,
   ) async {
-    final provenance = inputGuard.check(args: args, sources: _guardSources());
+    final provenance = inputGuard.check(args: args, sources: _inputGuardSources());
     if (!provenance.passed) {
       out.add(InputRejected(name, provenance.unsupported));
       return {
@@ -372,15 +372,40 @@ class TurnPipeline {
     );
   }
 
-  /// Everything a number may legitimately come from: what the person typed
-  /// or entered, the profile, and every tool result of the conversation.
-  /// Both guards read the same list so a figure the person gave two turns
-  /// ago is as good as one given now.
-  List<Object?> _guardSources() => [
+  /// What may authorize a finance-tool argument: what the person typed or
+  /// entered, the profile, and earlier finance results. A figure the person
+  /// gave two turns ago is as good as one given now. Numbers read from a web
+  /// page are deliberately absent: a page is untrusted input, and a price
+  /// printed on a listing must not become "the person's income".
+  List<Object?> _inputGuardSources() => [
     ..._userInputs,
     profile.toJson(),
-    ..._results.values.map((r) => r.result),
+    for (final r in _results.values)
+      if (!_isPageResult(r)) r.result,
   ];
+
+  /// What the narration may quote: the input sources plus the structured
+  /// fields read from pages (listing prices, mileages, years and the parsed
+  /// facts), never the page's free text, so a number in a page's prose does
+  /// not license the model to repeat it as a fact.
+  List<Object?> _narrationGuardSources() => [
+    ..._inputGuardSources(),
+    for (final r in _results.values)
+      if (_isPageResult(r)) _structuredPageFields(r.result),
+  ];
+
+  static bool _isPageResult(ToolResult r) =>
+      r.tool == AdvisorTools.readPage ||
+      r.tool == AdvisorTools.findVehicles ||
+      r.tool == AdvisorTools.updateSearch;
+
+  /// The parts of a page result whose numbers were parsed by code, not
+  /// written by the page: listings and facts. `text` is dropped.
+  static Map<String, Object?> _structuredPageFields(Map<String, Object?>? result) => {
+    'listings': ?result?['listings'],
+    'facts': ?result?['facts'],
+    'count': ?result?['count'],
+  };
 
   // --- narration ----------------------------------------------------------
 
@@ -394,7 +419,7 @@ class TurnPipeline {
   ) async {
     var narration = stripLeakedToolCalls(await _generate(out, userText, onToolCall));
 
-    var report = guard.check(narration: narration, sources: _guardSources());
+    var report = guard.check(narration: narration, sources: _narrationGuardSources());
     if (!report.passed && regenerateOnGuardFailure) {
       out.add(GuardTripped(report, replaced: false));
       // The correction is sent as a user turn: the SDK offers no other way
@@ -406,7 +431,7 @@ class TurnPipeline {
           '${report.unmatched.map((m) => m.raw).join(', ')}. Restate it using only numbers from '
           'the tool results, or no numbers at all. Do not call tools again.';
       narration = stripLeakedToolCalls(await _generate(out, correction, onToolCall, silent: true));
-      report = guard.check(narration: narration, sources: _guardSources());
+      report = guard.check(narration: narration, sources: _narrationGuardSources());
       if (!report.passed) {
         narration = _templated(turnResults);
         out.add(GuardTripped(report, replaced: true));

@@ -123,10 +123,21 @@ class BrowserService extends Notifier<BrowserState> {
     _loaded = null;
   }
 
+  /// True for a web address the pane may load: an absolute http(s) URL.
+  /// Everything else (javascript:, file:, data:, a bare word) is refused
+  /// before it reaches the WebView, because a programmatic load does not go
+  /// through the pane's navigation delegate on Android.
+  static bool isWebUrl(String? url) {
+    final u = Uri.tryParse(url ?? '');
+    return u != null && (u.scheme == 'https' || u.scheme == 'http') && u.host.isNotEmpty;
+  }
+
   /// Navigates the pane. The load completer is created here, not in
   /// [onLoadStart], so a read that follows an [open] waits for this load and
-  /// not for whichever load happened before.
+  /// not for whichever load happened before. Refuses anything that is not
+  /// a web address (see [isWebUrl]).
   Future<void> open(String url) async {
+    if (!isWebUrl(url)) throw ArgumentError.value(url, 'url', 'not a web address');
     _loaded = Completer<void>();
     state = state.copyWith(url: url, loading: true);
     final c = _controller;

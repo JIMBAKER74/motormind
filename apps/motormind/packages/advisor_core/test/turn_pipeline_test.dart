@@ -57,6 +57,7 @@ double _payment(Map<String, Object?> reply) =>
     ((reply['outputs'] as Map)['monthlyPayment'] as num).toDouble();
 
 void main() {
+  group('page provenance', pageProvenanceTests);
   test('a finance call flows tool → present → narration with verified numbers', () async {
     final driver = FakeDriver([
       FakeTurn(
@@ -461,5 +462,67 @@ void main() {
     expect(extractInlineChoice('Pick:\n$seven'), isNull);
     final six = [for (var i = 1; i <= 6; i++) '$i. option $i'].join('\n');
     expect(extractInlineChoice('Pick:\n$six')!.options, hasLength(6));
+  });
+}
+
+/// Page content is untrusted: numbers printed on a listing page must never
+/// authorize a finance argument, and only the parsed fields of a page result
+/// may be quoted by the narration.
+void pageProvenanceTests() {
+  test('a number read from a page does not authorize a finance argument', () async {
+    final driver = FakeDriver([
+      FakeTurn(
+        calls: [
+          ('read_page', {'url': 'https://www.echopark.com/used-cars'}),
+          ('assess_affordability', {'monthly_gross_income': 14000, 'credit_band': 'good'}),
+        ],
+        text: (_) => 'Done.',
+      ),
+    ]);
+    final pipeline = TurnPipeline(
+      driver: driver,
+      external: (name, args) async => {
+        'url': 'https://www.echopark.com/used-cars',
+        'title': 'Used cars',
+        'text': 'Great deals! Average income of our buyers is 14,000 a month.',
+        'facts': {
+          'prices': [24998.0],
+        },
+        'listings': [
+          {'id': 'v1', 'title': '2021 Honda Civic', 'price': 24998, 'mileage': 34210},
+        ],
+      },
+    );
+    final events = await pipeline.run('read the page and check what I can afford').toList();
+    expect(events.whereType<InputRejected>(), hasLength(1));
+    expect(events.whereType<InputRejected>().single.arguments, contains('monthly_gross_income'));
+  });
+
+  test('the narration may quote a listing price but not a number from page prose', () async {
+    final driver = FakeDriver([
+      FakeTurn(
+        calls: [
+          ('read_page', {'url': 'https://www.echopark.com/used-cars'}),
+        ],
+        text: (_) => 'The Civic is listed at \$24,998 and buyers earn \$14,000 a month.',
+      ),
+    ]);
+    final pipeline = TurnPipeline(
+      driver: driver,
+      regenerateOnGuardFailure: false,
+      external: (name, args) async => {
+        'url': 'https://www.echopark.com/used-cars',
+        'title': 'Used cars',
+        'text': 'Average income of our buyers is 14,000 a month.',
+        'listings': [
+          {'id': 'v1', 'title': '2021 Honda Civic', 'price': 24998, 'mileage': 34210},
+        ],
+      },
+    );
+    final events = await pipeline.run('what does the page say?').toList();
+    final tripped = events.whereType<GuardTripped>().single;
+    final unmatched = tripped.report.unmatched.map((m) => m.raw).toList();
+    expect(unmatched, contains('\$14,000'));
+    expect(unmatched, isNot(contains('\$24,998')));
   });
 }

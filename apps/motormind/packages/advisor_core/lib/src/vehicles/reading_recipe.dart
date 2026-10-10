@@ -143,6 +143,35 @@ Map<String, Object?> _asMap(Object? v, String where) {
 /// late field on the instance.
 final Map<String, RegExp> _patternCache = {};
 
+/// Longest regex a recipe may carry. Field patterns are short by nature
+/// ("\\$([\\d,]+)"); anything longer is a mistake or an attempt to make the
+/// reader spin.
+const maxRecipePatternLength = 120;
+
+/// Nested quantifiers like `(a+)+` or `(.*)*` are the classic shape that
+/// makes a backtracking engine take exponential time on a non-match.
+final _nestedQuantifier = RegExp(r'\([^()]*[+*][^()]*\)\s*[+*{]');
+
+/// Returns [pattern] when it is small and free of nested quantifiers, or
+/// throws a [FormatException] naming the problem, so a recipe from disk can
+/// be refused before it ever runs against a page.
+String checkRecipePattern(String pattern, String field) {
+  if (pattern.length > maxRecipePatternLength) {
+    throw FormatException(
+      'recipe: "$field" pattern is longer than $maxRecipePatternLength characters',
+    );
+  }
+  if (_nestedQuantifier.hasMatch(pattern)) {
+    throw FormatException('recipe: "$field" pattern nests quantifiers, which can run forever');
+  }
+  try {
+    RegExp(pattern);
+  } on FormatException {
+    throw FormatException('recipe: "$field" pattern is not a valid regular expression');
+  }
+  return pattern;
+}
+
 /// Collapses runs of whitespace in a read value.
 final RegExp _whitespace = RegExp(r'\s+');
 
@@ -180,7 +209,11 @@ class FieldRule {
     return FieldRule(
       selector: json['selector'] as String? ?? '',
       attrs: [if (json['attr'] is String) json['attr'] as String, ...?(attrs as List?)?.cast()],
-      pattern: json['pattern'] as String?,
+      pattern: switch (json['pattern']) {
+        null => null,
+        final String p => checkRecipePattern(p, 'pattern'),
+        _ => throw const FormatException('recipe: "pattern" must be a string'),
+      },
     );
   }
 
@@ -212,7 +245,10 @@ class FieldRule {
     if (raw == null) return null;
     raw = raw.replaceAll(_whitespace, ' ').trim();
     if (pattern == null) return raw.isEmpty ? null : raw;
-    final re = _patternCache.putIfAbsent(pattern!, () => RegExp(pattern!, caseSensitive: false));
+    final re = _patternCache.putIfAbsent(
+      pattern!,
+      () => RegExp(checkRecipePattern(pattern!, 'field'), caseSensitive: false),
+    );
     final m = re.firstMatch(raw);
     if (m == null) return null;
     return (m.groupCount >= 1 ? m.group(1) : m.group(0))?.trim();
@@ -291,7 +327,10 @@ class SelfCheckRules {
     minCards: _optional<num>(json, 'minCards', 'selfCheck')?.toInt() ?? 3,
     minPriceFraction: _optional<num>(json, 'minPriceFraction', 'selfCheck')?.toDouble() ?? 0.8,
     minImageFraction: _optional<num>(json, 'minImageFraction', 'selfCheck')?.toDouble() ?? 0.0,
-    totalPattern: _optional<String>(json, 'totalPattern', 'selfCheck'),
+    totalPattern: switch (_optional<String>(json, 'totalPattern', 'selfCheck')) {
+      null => null,
+      final p => checkRecipePattern(p, 'totalPattern'),
+    },
     maxTotalRatio: _optional<num>(json, 'maxTotalRatio', 'selfCheck')?.toDouble() ?? 1.0,
   );
 
@@ -478,7 +517,10 @@ class RecipeReader {
     final problems = <String>[];
     int? pageTotal;
     if (rules.totalPattern != null) {
-      final t = RegExp(rules.totalPattern!, caseSensitive: false).firstMatch(pageText);
+      final t = RegExp(
+        checkRecipePattern(rules.totalPattern!, 'totalPattern'),
+        caseSensitive: false,
+      ).firstMatch(pageText);
       if (t != null) pageTotal = int.tryParse((t.group(1) ?? '').replaceAll(',', ''));
     }
     if (counts.cards == 0) {

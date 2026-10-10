@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -84,8 +86,8 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
                   onDismiss: () => signalsNotifier.dismiss(l),
                   onOpenSite: () {
                     final url = '${l['detailUrl'] ?? l['sourceUrl'] ?? ''}';
-                    if (url.startsWith('http')) {
-                      ref.read(browserProvider.notifier).open(url);
+                    if (BrowserService.isWebUrl(url)) {
+                      unawaited(ref.read(browserProvider.notifier).open(url));
                     }
                   },
                   onAsk: () => ref
@@ -160,7 +162,7 @@ class _ListingTile extends StatelessWidget {
                   child: SizedBox(
                     width: _thumbWidth,
                     height: _thumbHeight,
-                    child: image != null && image.startsWith('http')
+                    child: image != null && image.startsWith('https://')
                         ? Image.network(
                             image,
                             fit: BoxFit.cover,
