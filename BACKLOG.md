@@ -238,6 +238,14 @@ VA-10, then VA-8 and VA-12.
   enums over strings, a test for every fixed bug. **done** (twelve commits ending at the
   docs commit; see `learnings/ai-assisted-code-quality.md` outside the repo)
 
+- **VA-13.2** As the owner, I want a security review of the code and the history and the
+  real findings fixed: page numbers never authorize finance arguments, web-only navigation
+  checked where a URL enters, bounded recipe regexes, backups off, release signing from an
+  untracked keystore. **done** (commit 26d19d29; ARCHITECTURE 13b)
+- **VA-13.3** As the owner, I want duplication removed across the packages and the app
+  (one parser, one sentinel, one enum lookup, one formatter, typed listings, one test
+  harness). **done**
+
 ## Epic VA-11 — Dynamic design (the core idea, ADR 0006)
 
 The concept, principles and numbered requirements (`DD-R#`) live in the working document
