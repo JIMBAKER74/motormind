@@ -69,3 +69,20 @@ quietly, with fewer or wrong cards. Three things followed from using it on real 
 | Let the model read the HTML | Too slow at 100 KB inputs, and a path around the numeric guard. |
 | Headless fetching for tests | Exactly the bot behavior the sites block, and against the project's posture (the pane is the person's browser). |
 | Site APIs | None of the curated sites offer a public one; the page the person sees is the honest source. |
+
+## Addendum, 2026-10-12: the first repair
+
+The loop ran once, by hand where a model will stand later. The owner captured EchoPark's
+SUV results on his phone (the Capture control; the self-check recorded "66 cards matched
+but only 0 had a title" on that very page). `tool/recipe_structure.dart` printed the
+page's structure: the repeated element families that hold an image and a number, the
+names most cards share and what each holds (a price, a mileage, words), image attribute
+names, link path prefixes, and where a count may sit. No page text. Recipe v2 was written
+from that summary; the fixture test reads the captured page and the self-check passes
+(22 cards, every one priced, page total 407). Two things the capture taught: the year is
+a span of its own on this site, so the reader now accepts a `year` field and puts it back
+in front of the name; and images are lazy, so a page captured before scrolling carries
+them on the first screen only, which makes the image fraction a floor rather than a
+verdict. The owner's standing correction: the summary exists so that a model, not a
+person, writes the next version; that experiment is VA-11.2.10.
+

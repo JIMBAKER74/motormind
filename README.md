@@ -1,13 +1,21 @@
 # Motormind AI
 
-> **Status: prototype, October 2026.** This is an experiment in *dynamic design* (an
-> on-device model composing the screen from the conversation) wrapped around a working
-> vehicle-cost demo. The finance engine, its guards and the disclosures are tested and
-> stable. The dynamic-design parts are at a prototype stage and their contracts are still
-> changing; see [Experimental status](#experimental-status) before reading the rest as a
-> description of a product. Gemma 4 E2B holds a conversation, calls the finance tools,
-> reads listing pages through the in-app browser, and the app composes the screen from
-> cards, a live filters card and a display decision table. Work happens on `develop`.
+> **This is an exploratory prototype, built for demonstration. It is not a product and it
+> is not release-ready.** Please read it that way: the point is to try an idea (an
+> on-device model composing the screen from a conversation) on a real phone, find out
+> what breaks, and write down what was learned. Things that are expected of a product,
+> such as a finished interface, stable behavior across sites, release signing, privacy
+> and policy documents, accessibility and localization, are either partial or not
+> started; the [Experimental status](#experimental-status) section says which. The
+> numbers in [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) come from unscripted sessions
+> on one phone, not from a benchmark. Nothing here is advice about buying a vehicle, and
+> the finance figures are illustrative.
+>
+> **Status, October 2026.** The finance engine, its guards and the disclosures are tested
+> and stable. The dynamic-design parts are at a prototype stage and their contracts are
+> still changing. Gemma 4 E2B holds a conversation, calls the finance tools, reads
+> listing pages through the in-app browser, and the app composes the screen from cards, a
+> live filters card and a display decision table. Work happens on `develop`.
 > Backlog: [BACKLOG.md](BACKLOG.md). Docs: [docs/](docs/README.md).
 
 An on-device AI companion for finding and financing a personal vehicle, built in Flutter.
@@ -27,7 +35,10 @@ at runtime from the conversation** rather than pre-designed screens
 ## Experimental status
 
 The vehicle use case is the carrier; the thesis is dynamic design, and it is a prototype.
-What that means, honestly:
+A reviewer should expect rough edges in every session: a model that goes quiet, a page a
+site serves differently than yesterday, a layout decision that lands a second late. Those
+are the material of the project, and the experiment log in the design notes records them
+rather than hiding them. What the pieces are, honestly:
 
 - **Stable and tested:** the finance math (`vehicle_finance`), the narration and input
   guards, the closed tool switch, the disclosures, the reading recipes with their

@@ -1,6 +1,8 @@
 # Architecture
 
-**Status:** revised 2026-10-09. The pure-Dart layer (sections 5 and 6) and the Flutter app
+**Status:** revised 2026-10-12. This describes an exploratory prototype built for
+demonstration; it is a record of what exists and why, not the design of a product.
+Revised 2026-10-09. The pure-Dart layer (sections 5 and 6) and the Flutter app
 exist with passing tests: the conversation and its cards, the stage, the live search and
 filters card, the web pane with reading recipes and captures, the model catalog, and the
 display decision table with an optional second model session (ADR 0008). Sections marked

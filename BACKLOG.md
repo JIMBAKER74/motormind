@@ -193,6 +193,14 @@ VA-10, then VA-8 and VA-12.
 - **VA-1.4.3** Display decisions coalesce: one per settled screen, never a queue, and
   the display prompt must not grow with the conversation (measured: ten queued decisions
   in 90 s, prefill climbing from 4 s to 30 s as the history was replayed into each).
+- **VA-11.2.10** The recipe repair loop, first turn of the crank (2026-10-12): the owner
+  captured EchoPark's SUV results on the phone; `tool/recipe_structure.dart` printed the
+  page's structure (card families, inner names, image attributes, link prefixes, count
+  candidates; no page text); the recipe was written from that summary; the self-check
+  test on the captured fixture is the verdict. **Done** for EchoPark v2. The owner's
+  standing goal is that a model does the writing: next is to hand the same summary to
+  the on-device model (it is ~2 KB, so Gemma 4 E2B can read it) and to the hosted help
+  (DD-R27), and compare their recipes against the self-check.
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the

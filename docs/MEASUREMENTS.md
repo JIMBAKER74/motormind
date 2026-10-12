@@ -1,5 +1,10 @@
 # Measurements
 
+Numbers from real hardware, taken during **unscripted sessions of an exploratory
+prototype**: the owner using the app as he pleased while the log ran. They are not a
+benchmark, not repeatable to the second, and not a claim about the engine or the model
+beyond this phone on this day. They are recorded because a prototype without numbers is
+a guess, and because the sessions that went wrong taught more than a clean run would have.
 Numbers from real hardware. Emulator timings are not representative (software GL and CPU
 inference share the cores; see `docs/SETUP.md`), so nothing from the emulator is recorded
 here. Each run names the device, the build, the model and the exact script, so a later run
@@ -89,7 +94,9 @@ Numbers were the aim; the run also found five defects, each fixed the same night
   fits its memory.
 - Price chips were ceilings only; "an SUV over $40k" had no chip. Bands now.
 
-Still open from the run: the EchoPark reading recipe fails its self-check on the live page
-(66 cards matched, none with a title), so the text fallback reads the page and no images
-show until a captured page fixes the selector; the rules-only baseline; and the display
-agent's cost after the coalescing fix.
+Still open from the run: the rules-only baseline, and the display agent's cost after the
+coalescing fix. The EchoPark recipe was repaired the next morning from a page the owner
+captured on the phone (recipe v2; `tool/recipe_structure.dart`; the fixture test is the
+verdict). A second session that morning, with the model picking itself and cards at
+launch, ran without the log attached (the phone had been unplugged and the device's log
+buffer had rotated), so its numbers are lost; the capture it produced is not.

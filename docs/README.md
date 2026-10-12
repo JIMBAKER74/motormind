@@ -1,6 +1,9 @@
 # docs/
 
-Technical documentation for Motormind AI. Upstream `flutter_edge_ai` docs live in
+Technical documentation for Motormind AI, **an exploratory prototype built for
+demonstration, not a product**. Every document here describes work in progress; where a
+document reads as a specification, it is the specification of an experiment. Dates and
+status columns say how current each one is. Upstream `flutter_edge_ai` docs live in
 `packages/*/README.md` and at flutteredge.ai; this folder is only for what is specific to
 this project.
 
