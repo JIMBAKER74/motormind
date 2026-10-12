@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -36,7 +38,9 @@ android {
     // storePassword, keyAlias, keyPassword). Without it a release build falls
     // back to the debug key so `flutter run --release` still works locally;
     // such a build must never be distributed.
-    val keyProperties = java.util.Properties().apply {
+    // Imported above: inside this block `java` is the Java plugin extension,
+    // so the qualified name does not resolve.
+    val keyProperties = Properties().apply {
         val f = rootProject.file("key.properties")
         if (f.exists()) f.inputStream().use { load(it) }
     }
