@@ -76,6 +76,25 @@ decisions must be coalesced (one per settled screen, never a queue), and the dis
 agent's prompt must not grow with the conversation. Until then the switch stays off by
 default, which the measurements confirm was the right default.
 
+### The log of a session, read against expectations
+
+The owner's point (2026-10-12): a log without an obvious error still says what happened,
+and whether it matches what the app was supposed to do. The 10:58 launch on the Fold 4,
+line by line, with the expectation beside each:
+
+| Time | What the log says | Expected? |
+|---|---|---|
+| 10:58:01 | Process starts; the model manager restores Gemma 4 E2B as active | Yes |
+| 10:58:02 | 4.3 GB available → 8,192-token window; engine create starts on the GPU | Yes (the 4 GB threshold) |
+| 10:58:09 | Engine ready after 6.7 s | Faster than the 10 to 15 s of the first day; warm file cache |
+| 10:58:14 | EchoPark results page read with recipe v2: 22 cards, 22 priced, 8 with image | Yes for cards and prices; 8 images is the lazy carousel before any scrolling |
+| 10:58:14 → 11:35 | 1,955 lines from the app's process (surfaces, input channels, a background/foreground cycle at 11:33) and none from the Flutter side | **No.** The owner tapped the disabled input several times, backgrounded the app and saw a red screen; Flutter prints its own errors and nothing arrived. See TECH_QUESTIONS TQ83 |
+
+What the log cannot say: taps. Flutter does not log touches, and a disabled widget
+absorbs them without a trace, so the owner's repeated taps on the disabled input left
+nothing to read. That is the gap the "dead taps are signals" rule (design notes, DD-R42)
+closes from the app's side: the app records them because the log never will.
+
 ### What the run found, and what it changed
 
 Numbers were the aim; the run also found five defects, each fixed the same night:

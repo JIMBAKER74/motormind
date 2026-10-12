@@ -201,6 +201,23 @@ VA-10, then VA-8 and VA-12.
   standing goal is that a model does the writing: next is to hand the same summary to
   the on-device model (it is ~2 KB, so Gemma 4 E2B can read it) and to the hosted help
   (DD-R27), and compare their recipes against the self-check.
+- **VA-2.6.1** Always on (2026-10-12): no start button; the input is live from the first
+  frame; the conversation starts itself when the model is ready; a message typed before
+  that waits for it. **Done.**
+- **VA-2.6.2** Dead taps are signals (DD-R42): three quick taps on one listing make the
+  app ask what would help (bigger photo, open on the site, nothing) and act on the answer
+  at once; the model is told with the next turn. **Done** for listing tiles. Next: the
+  same for any control that absorbs a tap, and the signals in the display agent's record.
+- **VA-2.6.3** A part of the screen that fails to build shows one sentence in its place
+  and the rest keeps working (the red screen is gone). **Done.** Next: Motormind is told,
+  and may offer to reset the part.
+- **VA-11.2.11** Images from the person's browsing (DD-R43): the app never scrolls; the
+  page is re-read as it is every five seconds while in view and on the switch to Cards;
+  images merge into the listings by key. **Done.** Open: the polling interval (TQ84).
+- **VA-11.2.12** The site's next page from the card ("More from EchoPark"); needs a
+  captured page 2 for the URL parameter (QUESTIONS Q83).
+- **VA-1.4.5** The app's log output stopped reaching logcat for 37 minutes while the
+  process lived (TQ83); find out why before relying on the log for anything.
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
