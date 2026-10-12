@@ -159,10 +159,10 @@ Future<Started> _start(WidgetTester tester, {bool fullscreen = true, Duration? i
   await tester.pumpWidget(
     await motormindApp(
       acknowledgedVersion: Disclosures.gateVersion,
+      pageReader: fakeReader,
       overrides: [
         turnIdleLimitProvider.overrideWithValue(idleLimit),
         searchDebounceProvider.overrideWithValue(Duration.zero),
-        pageReaderProvider.overrideWithValue(fakeReader),
         chatDriverFactoryProvider.overrideWithValue((instruction) async {
           driver.systemInstructions.add(instruction);
           return driver;
@@ -263,20 +263,23 @@ void main() {
       tester,
     ) async {
       final s = await _start(tester, fullscreen: false);
-      expect(find.byKey(const Key('browser-pane')), findsOneWidget);
+      // Cards first: the site's first page was read at launch and its
+      // listings are on the stage before anything was asked (DD-Q21).
+      expect(find.byKey(const Key('listing-2021 Honda CR-V EX|27995')), findsOneWidget);
+      expect(find.byKey(const Key('browser-pane')), findsNothing);
       await _chooseMode(tester, s, 'practical');
-      // The live filters and the numbers form join the conversation;
-      // the web pane stays in view.
+      // The live filters and the numbers form join the conversation (checked
+      // on the timeline: the docked list is lazy and short once the stage
+      // holds listings); the stage keeps the listings.
       final chatList = find.byKey(const Key('chat-list'));
-      expect(
-        find.descendant(of: chatList, matching: find.byKey(const Key('card-search_filters'))),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: chatList, matching: find.byKey(const Key('card-input_form'))),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('browser-pane')), findsOneWidget);
+      final components = s.container
+          .read(chatServiceProvider)
+          .timeline
+          .whereType<ComponentEntry>()
+          .map((e) => e.shown.request.component.id)
+          .toList();
+      expect(components, containsAll(['search_filters', 'input_form']));
+      expect(find.byKey(const Key('listing-2021 Honda CR-V EX|27995')), findsOneWidget);
       await _turn(
         tester,
         s,
@@ -357,8 +360,9 @@ void main() {
       final s = await _start(tester);
       await _chooseMode(tester, s, 'browsing');
       expect(_hintOf(tester), ChatStrings.hintDefault);
-      await _tapFilter(tester, 'price-35000');
-      expect(s.container.read(searchProvider).query.maxPrice, 35000);
+      await _tapFilter(tester, 'price-40000');
+      expect(s.container.read(searchProvider).query.maxPrice, 40000);
+      expect(s.container.read(searchProvider).query.minPrice, 25000);
       expect(_hintOf(tester), ChatStrings.hintFiltered);
       // The fake page had two listings; one is under 35k (filtered here, not
       // by the fake site).
@@ -390,7 +394,7 @@ void main() {
     testWidgets('search notes do not repeat, and the card collapses when docked', (tester) async {
       final s = await _start(tester);
       await _chooseMode(tester, s, 'browsing');
-      await _tapFilter(tester, 'price-35000');
+      await _tapFilter(tester, 'price-40000');
       await _tapFilter(tester, 'price-25000');
       // Two searches in a row leave one note, and it names the latest search.
       final notes = s.container.read(chatServiceProvider).messages.where((m) => m.isSearchNote);

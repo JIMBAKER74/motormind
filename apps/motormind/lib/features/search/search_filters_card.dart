@@ -16,8 +16,15 @@ import 'search_service.dart';
 class SearchFiltersCard extends ConsumerWidget {
   const SearchFiltersCard({super.key});
 
-  /// Price ceilings as chips: the rungs most used-car shoppers name first.
-  static const priceCeilings = [25000, 35000, 50000, 75000];
+  /// Price bands as chips. Bands, not ceilings: a shopper who wants
+  /// "an SUV over \$40k" had no chip for it when the row was ceilings only
+  /// (owner, 2026-10-12). The rungs are the ones used-car shoppers name.
+  static const priceBands = [
+    PriceBand(max: 25000),
+    PriceBand(min: 25000, max: 40000),
+    PriceBand(min: 40000, max: 60000),
+    PriceBand(min: 60000),
+  ];
 
   /// Mileage ceilings: under 50k reads as "like new", under 100k as "safe".
   static const mileageCeilings = [50000, 100000];
@@ -79,14 +86,14 @@ class SearchFiltersCard extends ConsumerWidget {
             isSelected: (b) => q.bodyStyle == b,
             onSelect: (b) => svc.update({'body_style': b}),
           ),
-          _CeilingRow<int>(
+          _CeilingRow<PriceBand>(
             keyPrefix: 'price',
             anyLabel: ChatStrings.anyPrice,
-            anySelected: q.maxPrice == null,
-            values: priceCeilings,
-            labelOf: ChatStrings.underPrice,
-            isSelected: (p) => q.maxPrice == p.toDouble(),
-            onSelect: (p) => svc.update({'max_price': p}),
+            anySelected: q.maxPrice == null && q.minPrice == null,
+            values: priceBands,
+            labelOf: (b) => ChatStrings.priceBand(b.min, b.max),
+            isSelected: (b) => q.maxPrice == b.max?.toDouble() && q.minPrice == b.min?.toDouble(),
+            onSelect: (b) => svc.update({'min_price': b?.min, 'max_price': b?.max}),
           ),
           _CeilingRow<int>(
             keyPrefix: 'miles',
@@ -143,6 +150,22 @@ class _SearchStatus extends ConsumerWidget {
       style: Theme.of(context).textTheme.labelSmall,
     );
   }
+}
+
+/// A price range for the filters card; either bound may be open. Its string
+/// form is the chip key suffix (`price-40000`, `price-over-60000`), so tests
+/// can name a band without knowing its bounds.
+class PriceBand {
+  const PriceBand({this.min, this.max});
+
+  /// Lower bound in dollars, inclusive; null for none.
+  final int? min;
+
+  /// Upper bound in dollars, inclusive; null for none.
+  final int? max;
+
+  @override
+  String toString() => max == null ? 'over-$min' : '$max';
 }
 
 /// One filter field as a row of chips: an "any" chip (key `<prefix>-any`)

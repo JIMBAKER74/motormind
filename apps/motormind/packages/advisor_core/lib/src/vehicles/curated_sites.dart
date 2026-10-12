@@ -22,9 +22,10 @@ class CuratedSite {
   /// The site's front page.
   final String home;
 
-  /// Builds a results URL. `maxPrice` in dollars; `bodyStyle` one of the
-  /// [SearchQuery.bodyStyles] values; `keywords` free text.
-  final String Function({double? maxPrice, String? bodyStyle, String? keywords}) search;
+  /// Builds a results URL. `minPrice` and `maxPrice` in dollars; `bodyStyle`
+  /// one of the [SearchQuery.bodyStyles] values; `keywords` free text.
+  final String Function({double? minPrice, double? maxPrice, String? bodyStyle, String? keywords})
+  search;
 
   /// Results URL for a live [SearchQuery]. Make, model and keywords ride in
   /// the keyword slot; sites that ignore a parameter still list inventory,
@@ -36,6 +37,7 @@ class CuratedSite {
       q.keywords,
     ].whereType<String>().where((s) => s.isNotEmpty).join(' ');
     return search(
+      minPrice: q.minPrice,
       maxPrice: q.maxPrice,
       bodyStyle: q.bodyStyle,
       keywords: keywords.isEmpty ? null : keywords,
@@ -57,11 +59,13 @@ abstract final class CuratedSites {
     id: 'echopark',
     name: 'EchoPark',
     home: 'https://www.echopark.com/',
-    search: ({maxPrice, bodyStyle, keywords}) => _url('https://www.echopark.com/used-cars', [
-      if (bodyStyle != null) 'bodyStyle=${_encode(_body(bodyStyle))}',
-      if (maxPrice != null) 'maxPrice=${maxPrice.round()}',
-      if (keywords != null && keywords.isNotEmpty) 'search=${_encode(keywords)}',
-    ]),
+    search: ({minPrice, maxPrice, bodyStyle, keywords}) =>
+        _url('https://www.echopark.com/used-cars', [
+          if (bodyStyle != null) 'bodyStyle=${_encode(_body(bodyStyle))}',
+          if (minPrice != null) 'minPrice=${minPrice.round()}',
+          if (maxPrice != null) 'maxPrice=${maxPrice.round()}',
+          if (keywords != null && keywords.isNotEmpty) 'search=${_encode(keywords)}',
+        ]),
   );
 
   /// Cars.com shopping results.
@@ -69,12 +73,14 @@ abstract final class CuratedSites {
     id: 'cars',
     name: 'Cars.com',
     home: 'https://www.cars.com/',
-    search: ({maxPrice, bodyStyle, keywords}) => _url('https://www.cars.com/shopping/results/', [
-      'stock_type=all',
-      if (maxPrice != null) 'list_price_max=${maxPrice.round()}',
-      if (bodyStyle != null) 'body_style_slugs[]=${_encode(_body(bodyStyle))}',
-      if (keywords != null && keywords.isNotEmpty) 'keyword=${_encode(keywords)}',
-    ]),
+    search: ({minPrice, maxPrice, bodyStyle, keywords}) =>
+        _url('https://www.cars.com/shopping/results/', [
+          'stock_type=all',
+          if (minPrice != null) 'list_price_min=${minPrice.round()}',
+          if (maxPrice != null) 'list_price_max=${maxPrice.round()}',
+          if (bodyStyle != null) 'body_style_slugs[]=${_encode(_body(bodyStyle))}',
+          if (keywords != null && keywords.isNotEmpty) 'keyword=${_encode(keywords)}',
+        ]),
   );
 
   /// Autotrader listings.
@@ -82,8 +88,9 @@ abstract final class CuratedSites {
     id: 'autotrader',
     name: 'Autotrader',
     home: 'https://www.autotrader.com/',
-    search: ({maxPrice, bodyStyle, keywords}) =>
+    search: ({minPrice, maxPrice, bodyStyle, keywords}) =>
         _url('https://www.autotrader.com/cars-for-sale/all-cars', [
+          if (minPrice != null) 'minPrice=${minPrice.round()}',
           if (maxPrice != null) 'maxPrice=${maxPrice.round()}',
           if (bodyStyle != null) 'vehicleStyleCodes=${_encode(_atStyle(bodyStyle))}',
           if (keywords != null && keywords.isNotEmpty) 'keywordPhrases=${_encode(keywords)}',

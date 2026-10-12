@@ -2,6 +2,35 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('keywords', () {
+    test('generic words and the site name are dropped', () {
+      expect(const SearchQuery().applyArgs({'keywords': 'EchoPark'}).keywords, isNull);
+      expect(const SearchQuery().applyArgs({'keywords': 'car'}).keywords, isNull);
+      expect(const SearchQuery().applyArgs({'keywords': 'used cars'}).keywords, isNull);
+    });
+
+    test('a body style in the keywords becomes the body style', () {
+      final q = const SearchQuery().applyArgs({'keywords': 'SUV'});
+      expect(q.keywords, isNull);
+      expect(q.bodyStyle, 'suv');
+    });
+
+    test('an explicit body style is not overridden by a keyword', () {
+      final q = const SearchQuery(bodyStyle: 'sedan').applyArgs({'keywords': 'sports car'});
+      expect(q.bodyStyle, 'sedan');
+      expect(q.keywords, isNull);
+    });
+
+    test('makes, models and features survive', () {
+      expect(const SearchQuery().applyArgs({'keywords': 'Honda CR-V'}).keywords, 'Honda CR-V');
+      expect(
+        const SearchQuery().applyArgs({'keywords': 'heated seats awd'}).keywords,
+        'heated seats awd',
+      );
+      expect(const SearchQuery().applyArgs({'keywords': 'used Honda'}).keywords, 'Honda');
+    });
+  });
+
   group('inferSearchArgs', () {
     test('maps everyday words to filters', () {
       expect(inferSearchArgs('I want a sports car under 40k'), {

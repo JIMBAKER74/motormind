@@ -97,22 +97,23 @@ final class SearchService extends Notifier<SearchState> {
   @override
   SearchState build() {
     ref.onDispose(() => _debounce?.cancel());
+    // Cards first: the site's own first page of inventory is read once at
+    // launch and shown as tiles, before anything is asked (design notes,
+    // DD-Q21; the owner's Q71). It is the one page the pane would open
+    // anyway, now the results page instead of the front page; nothing else
+    // loads until the person taps or types.
+    scheduleApply(delay: Duration.zero);
     return const SearchState();
   }
 
   CuratedSite get site => CuratedSites.byId(state.siteId) ?? CuratedSites.defaultSite;
 
-  /// Chooses where to look. Opens the site's home if nothing is filtered yet,
-  /// or re-applies the current filters there.
+  /// Chooses where to look and re-applies the current filters there; with
+  /// nothing filtered yet that is the site's first page of inventory.
   void selectSite(String id) {
     if (CuratedSites.byId(id) == null) return;
     state = state.copyWith(siteId: id, clearNote: true);
-    if (state.query.isEmpty) {
-      unawaited(ref.read(browserProvider.notifier).open(site.home));
-      ref.read(stageProvider.notifier).showWeb();
-    } else {
-      scheduleApply(delay: Duration.zero);
-    }
+    scheduleApply(delay: Duration.zero);
   }
 
   /// Records the person's expand or collapse of the filters card; null hands

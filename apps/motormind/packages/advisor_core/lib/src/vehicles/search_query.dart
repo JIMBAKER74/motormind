@@ -130,8 +130,61 @@ class SearchQuery {
     if (args.containsKey('min_year')) {
       q = q.copyWith(minYear: parseTolerantNumber(args['min_year'])?.round());
     }
-    if (args.containsKey('keywords')) q = q.copyWith(keywords: _toText(args['keywords']));
+    if (args.containsKey('keywords')) {
+      final cleaned = cleanKeywords(_toText(args['keywords']));
+      q = q.copyWith(keywords: cleaned.keywords);
+      if (q.bodyStyle == null && cleaned.bodyStyle != null) {
+        q = q.copyWith(bodyStyle: cleaned.bodyStyle);
+      }
+    }
     return q;
+  }
+
+  /// Words that never narrow a vehicle search and must not reach the keyword
+  /// filter: a listing titled "2021 Honda CR-V" contains none of them, so a
+  /// keyword of "car" or the site's own name hides every listing on the page.
+  /// Observed from Gemma 4 E2B on a phone (2026-10-12): `keywords: "EchoPark"`
+  /// on the first turn, `keywords: "car"` on the second. The site names are
+  /// listed here rather than read from the curated sites to keep this file
+  /// free of that import; a test keeps the two in step.
+  static const Set<String> genericKeywords = {
+    'car',
+    'cars',
+    'vehicle',
+    'vehicles',
+    'auto',
+    'autos',
+    'used',
+    'new',
+    'listing',
+    'listings',
+    'inventory',
+    'search',
+    'echopark',
+    'cars.com',
+    'autotrader',
+  };
+
+  /// Strips [genericKeywords] and body-style words from a keyword string.
+  /// A body style found in it is returned separately so [applyArgs] can set
+  /// the field the model should have used ("SUV" as a keyword means
+  /// `body_style: suv`). Returns null keywords when nothing useful is left.
+  static ({String? keywords, String? bodyStyle}) cleanKeywords(String? raw) {
+    if (raw == null) return (keywords: null, bodyStyle: null);
+    var text = raw;
+    final style = normalizeBodyStyle(text);
+    if (style != null) {
+      for (final (_, pattern) in _bodyStylePatterns) {
+        // The patterns are lowercase; the keywords keep the model's casing
+        // so "Honda CR-V" is shown as written.
+        text = text.replaceAll(RegExp(pattern.pattern, caseSensitive: false), ' ');
+      }
+    }
+    final words = text
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty && !genericKeywords.contains(w.toLowerCase()))
+        .toList();
+    return (keywords: words.isEmpty ? null : words.join(' '), bodyStyle: style);
   }
 
   /// Serializes in the snake_case shape `update_search` uses; nulls are kept
