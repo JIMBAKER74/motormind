@@ -16,7 +16,7 @@ sealed class TurnEvent {
 }
 
 /// A piece of reply text for the person, as the model streams it.
-class TextDelta extends TurnEvent {
+final class TextDelta extends TurnEvent {
   /// Creates a delta carrying [text].
   const TextDelta(this.text);
 
@@ -25,7 +25,7 @@ class TextDelta extends TurnEvent {
 }
 
 /// A piece of the model's reasoning, kept apart from the reply.
-class ThinkingDelta extends TurnEvent {
+final class ThinkingDelta extends TurnEvent {
   /// Creates a delta carrying [text].
   const ThinkingDelta(this.text);
 
@@ -37,7 +37,7 @@ class ThinkingDelta extends TurnEvent {
 /// instead: a guarded regeneration passed, the templated fallback was used,
 /// or a prose option list was lifted out into a choice component. Arrives
 /// after the [TextDelta]s it supersedes and before [TurnDone].
-class NarrationReplaced extends TurnEvent {
+final class NarrationReplaced extends TurnEvent {
   /// Creates an event carrying the replacement [text].
   const NarrationReplaced(this.text);
 
@@ -47,7 +47,7 @@ class NarrationReplaced extends TurnEvent {
 
 /// A finance tool was called with a number the person never supplied; the
 /// call was refused and the model told which argument to ask for.
-class InputRejected extends TurnEvent {
+final class InputRejected extends TurnEvent {
   /// Creates an event for [tool] and the refused [arguments].
   const InputRejected(this.tool, this.arguments);
 
@@ -61,7 +61,7 @@ class InputRejected extends TurnEvent {
 
 /// A tool call has been dispatched; its outcome follows as [ToolFinished],
 /// [InputRejected], [PresentRejected] or [ProfileUpdated].
-class ToolStarted extends TurnEvent {
+final class ToolStarted extends TurnEvent {
   /// Creates an event for the call to [name] with [args].
   const ToolStarted(this.name, this.args);
 
@@ -74,7 +74,7 @@ class ToolStarted extends TurnEvent {
 
 /// A finance or external tool call completed, with or without an error
 /// (see [ToolResult.isError]).
-class ToolFinished extends TurnEvent {
+final class ToolFinished extends TurnEvent {
   /// Creates an event carrying [result].
   const ToolFinished(this.result);
 
@@ -83,7 +83,7 @@ class ToolFinished extends TurnEvent {
 }
 
 /// The buyer profile changed through an `update_profile` call.
-class ProfileUpdated extends TurnEvent {
+final class ProfileUpdated extends TurnEvent {
   /// Creates an event carrying the new [profile].
   const ProfileUpdated(this.profile);
 
@@ -93,7 +93,7 @@ class ProfileUpdated extends TurnEvent {
 
 /// A component is to be shown, either because the model called `present` or
 /// because the app showed something on its own ([automatic]).
-class Presented extends TurnEvent {
+final class Presented extends TurnEvent {
   /// Creates an event for [request], bound to [result] for result components.
   const Presented(this.request, {this.result, this.automatic = false});
 
@@ -109,7 +109,7 @@ class Presented extends TurnEvent {
 }
 
 /// A `present` call failed validation; the model was told the [errors].
-class PresentRejected extends TurnEvent {
+final class PresentRejected extends TurnEvent {
   /// Creates an event carrying the validation [errors].
   const PresentRejected(this.errors);
 
@@ -120,7 +120,7 @@ class PresentRejected extends TurnEvent {
 
 /// The guard found numbers the model did not get from a tool. [replaced] is
 /// true when the templated fallback was used in place of the model's text.
-class GuardTripped extends TurnEvent {
+final class GuardTripped extends TurnEvent {
   /// Creates an event carrying [report]; [replaced] says whether the fallback
   /// text was used.
   const GuardTripped(this.report, {required this.replaced});
@@ -134,7 +134,7 @@ class GuardTripped extends TurnEvent {
 }
 
 /// The policy check found sales language in the final narration.
-class PolicyFlagged extends TurnEvent {
+final class PolicyFlagged extends TurnEvent {
   /// Creates an event carrying [flags].
   const PolicyFlagged(this.flags);
 
@@ -143,7 +143,7 @@ class PolicyFlagged extends TurnEvent {
 }
 
 /// The turn is complete; the last event of a turn that ran to the end.
-class TurnDone extends TurnEvent {
+final class TurnDone extends TurnEvent {
   /// Creates the final event with the [narration] shown and the [results]
   /// produced.
   const TurnDone({required this.narration, required this.results});
@@ -158,7 +158,7 @@ class TurnDone extends TurnEvent {
 /// The turn stopped on an error from the driver or a collaborator. The
 /// error itself follows on the stream and the stream closes without a
 /// [TurnDone]; the UI shows [message] so the reply does not sit half-written.
-class TurnFailed extends TurnEvent {
+final class TurnFailed extends TurnEvent {
   /// Creates an event carrying the error's [message].
   const TurnFailed(this.message);
 
@@ -193,7 +193,7 @@ class TurnPipeline {
     this.policy = const PolicyCheck(),
     this.regenerateOnGuardFailure = true,
   }) : finance = finance ?? FinanceToolHandlers(),
-       profile = profile ?? const BuyerProfile();
+       _profile = profile ?? const BuyerProfile();
 
   /// The inference seam that owns the chat history.
   final ChatDriver driver;
@@ -222,10 +222,20 @@ class TurnPipeline {
   /// correction before the templated fallback is used.
   final bool regenerateOnGuardFailure;
 
-  /// The current buyer profile; replaced on every `update_profile` call.
-  /// Assignable because the app sets the shopping mode itself when the
-  /// person picks one from the opening choice, outside any turn.
-  BuyerProfile profile;
+  /// The current buyer profile; replaced on every `update_profile` call and
+  /// by [setShoppingMode]. Read-only from outside so that every change goes
+  /// through [BuyerProfile.applyUpdate] and the profile never holds a value
+  /// the update path would have refused.
+  BuyerProfile get profile => _profile;
+  BuyerProfile _profile;
+
+  /// Sets the shopping mode outside any turn, for the app to apply the
+  /// person's pick from the opening choice. Goes through the same update as
+  /// an `update_profile` call, so the rest of the profile is untouched. The
+  /// change is not recorded as a user input: a mode is not a number.
+  void setShoppingMode(ShoppingMode mode) {
+    _profile = _profile.applyUpdate({'shopping_mode': mode.name});
+  }
 
   final Map<String, ToolResult> _results = {};
   final List<Map<String, Object?>> _userInputs = [];
@@ -280,7 +290,7 @@ class TurnPipeline {
     String name,
     Map<String, Object?> args,
   ) async {
-    final provenance = inputGuard.check(args: args, sources: _guardSources());
+    final provenance = inputGuard.check(args: args, sources: _inputGuardSources());
     if (!provenance.passed) {
       out.add(InputRejected(name, provenance.unsupported));
       return {
@@ -298,10 +308,10 @@ class TurnPipeline {
     StreamController<TurnEvent> out,
     Map<String, Object?> args,
   ) async {
-    profile = profile.applyUpdate(args);
+    _profile = _profile.applyUpdate(args);
     _userInputs.add(args);
-    out.add(ProfileUpdated(profile));
-    return {'ok': true, 'profile': profile.toPromptSummary()};
+    out.add(ProfileUpdated(_profile));
+    return {'ok': true, 'profile': _profile.toPromptSummary()};
   }
 
   Future<Map<String, Object?>> _runPresent(
@@ -353,8 +363,10 @@ class TurnPipeline {
     _autoPresent(out, r);
   }
 
-  /// Shows the number the moment it exists (DD-R18c): the model may still
-  /// re-present it with a different component, which replaces this card.
+  /// Shows the number the moment it exists, so a computed figure is on screen
+  /// even when the model forgets to present it or narrates it badly; the
+  /// model may still re-present it with a different component, which
+  /// replaces this card.
   /// Nothing is shown for errors, for tools whose job is to change the
   /// screen ([ToolSpec.changesUi]), or for an external result that reports
   /// an `error` field instead of throwing.
@@ -372,15 +384,40 @@ class TurnPipeline {
     );
   }
 
-  /// Everything a number may legitimately come from: what the person typed
-  /// or entered, the profile, and every tool result of the conversation.
-  /// Both guards read the same list so a figure the person gave two turns
-  /// ago is as good as one given now.
-  List<Object?> _guardSources() => [
+  /// What may authorize a finance-tool argument: what the person typed or
+  /// entered, the profile, and earlier finance results. A figure the person
+  /// gave two turns ago is as good as one given now. Numbers read from a web
+  /// page are deliberately absent: a page is untrusted input, and a price
+  /// printed on a listing must not become "the person's income".
+  List<Object?> _inputGuardSources() => [
     ..._userInputs,
     profile.toJson(),
-    ..._results.values.map((r) => r.result),
+    for (final r in _results.values)
+      if (!_isPageResult(r)) r.result,
   ];
+
+  /// What the narration may quote: the input sources plus the structured
+  /// fields read from pages (listing prices, mileages, years and the parsed
+  /// facts), never the page's free text, so a number in a page's prose does
+  /// not license the model to repeat it as a fact.
+  List<Object?> _narrationGuardSources() => [
+    ..._inputGuardSources(),
+    for (final r in _results.values)
+      if (_isPageResult(r)) _structuredPageFields(r.result),
+  ];
+
+  static bool _isPageResult(ToolResult r) =>
+      r.tool == AdvisorTools.readPage ||
+      r.tool == AdvisorTools.findVehicles ||
+      r.tool == AdvisorTools.updateSearch;
+
+  /// The parts of a page result whose numbers were parsed by code, not
+  /// written by the page: listings and facts. `text` is dropped.
+  static Map<String, Object?> _structuredPageFields(Map<String, Object?>? result) => {
+    'listings': ?result?['listings'],
+    'facts': ?result?['facts'],
+    'count': ?result?['count'],
+  };
 
   // --- narration ----------------------------------------------------------
 
@@ -394,7 +431,7 @@ class TurnPipeline {
   ) async {
     var narration = stripLeakedToolCalls(await _generate(out, userText, onToolCall));
 
-    var report = guard.check(narration: narration, sources: _guardSources());
+    var report = guard.check(narration: narration, sources: _narrationGuardSources());
     if (!report.passed && regenerateOnGuardFailure) {
       out.add(GuardTripped(report, replaced: false));
       // The correction is sent as a user turn: the SDK offers no other way
@@ -406,7 +443,7 @@ class TurnPipeline {
           '${report.unmatched.map((m) => m.raw).join(', ')}. Restate it using only numbers from '
           'the tool results, or no numbers at all. Do not call tools again.';
       narration = stripLeakedToolCalls(await _generate(out, correction, onToolCall, silent: true));
-      report = guard.check(narration: narration, sources: _guardSources());
+      report = guard.check(narration: narration, sources: _narrationGuardSources());
       if (!report.passed) {
         narration = _templated(turnResults);
         out.add(GuardTripped(report, replaced: true));
@@ -417,7 +454,9 @@ class TurnPipeline {
     }
 
     // A model that writes "choice: option1: ..." meant to present a choice.
-    // The app renders it as one (DD principle 3) and drops the prose list.
+    // The app renders it as one and drops the prose list: the person should
+    // get the tappable answers the model intended, not a transcript of the
+    // model's failure to call the tool.
     final inline = extractInlineChoice(narration);
     if (inline != null) {
       final v = PresentRequest.validate({
@@ -500,7 +539,7 @@ bool _looksLikeToolCall(String json) =>
 
 /// A prose option list found in a reply by [extractInlineChoice], split into
 /// the parts a `present(choice)` call needs.
-class InlineChoice {
+final class InlineChoice {
   /// Creates a choice from its [question], [options] and the [remainder].
   const InlineChoice({required this.question, required this.options, required this.remainder});
 

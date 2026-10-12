@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/widgets/compact_chip.dart';
 import '../chat_state.dart';
 import 'formatting.dart';
 
@@ -52,14 +53,10 @@ class PageExtractCard extends StatelessWidget {
                 runSpacing: 4,
                 children: [
                   for (final p in prices.take(_maxPriceChips))
-                    Chip(label: Text(money(p, cents: false)), visualDensity: VisualDensity.compact),
+                    CompactChip(label: Text(money(p, cents: false))),
                   if (facts['mileage'] != null)
-                    Chip(
-                      label: Text('${thousands(facts['mileage'])} mi'),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  if (facts['year'] != null)
-                    Chip(label: Text('${facts['year']}'), visualDensity: VisualDensity.compact),
+                    CompactChip(label: Text('${thousands(facts['mileage'])} mi')),
+                  if (facts['year'] != null) CompactChip(label: Text('${facts['year']}')),
                 ],
               ),
             if (listings.isNotEmpty) ...[

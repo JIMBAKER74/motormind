@@ -1,6 +1,8 @@
 import 'package:html/dom.dart' show Document, Element;
 import 'package:html/parser.dart' show parse;
+import 'package:vehicle_finance/vehicle_finance.dart' show enumByName;
 
+import '../sentinel.dart';
 import 'listing.dart';
 import 'listing_parse.dart';
 
@@ -16,11 +18,7 @@ enum RecipeStatus {
   broken,
 }
 
-/// Marks an omitted `note` argument in [ReadingRecipe.withStatus], so that
-/// an explicit null can mean "clear the note".
-const _keepNote = Object();
-
-/// A per-site reading recipe: data, not code . It names the
+/// A per-site reading recipe: data, not code. It names the
 /// listing card element, where each field sits inside it, and how to tell
 /// whether the read worked. Shipped as a JSON asset, replaceable at runtime,
 /// so a repaired recipe (from a person today, a help service later)
@@ -66,11 +64,9 @@ class ReadingRecipe {
   factory ReadingRecipe.fromJson(Map<String, Object?> json) {
     final rawFields = _require<Map>(json, 'fields', 'recipe');
     final rawStatus = json['status'];
-    final status = switch (rawStatus) {
-      null => RecipeStatus.verified,
-      String() => RecipeStatus.values.asNameMap()[rawStatus],
-      _ => null,
-    };
+    final status = rawStatus == null
+        ? RecipeStatus.verified
+        : enumByName(RecipeStatus.values, rawStatus);
     if (status == null) {
       throw FormatException(
         'recipe: unknown status "$rawStatus"; expected one of '
@@ -109,14 +105,14 @@ class ReadingRecipe {
   /// Returns a copy with [status] replaced. [note] replaces the note when
   /// given, clears it when explicitly null, and is kept when omitted, so a
   /// repair can wipe a stale failure message.
-  ReadingRecipe withStatus(RecipeStatus status, {Object? note = _keepNote}) => ReadingRecipe(
+  ReadingRecipe withStatus(RecipeStatus status, {Object? note = unset}) => ReadingRecipe(
     siteId: siteId,
     version: version,
     card: card,
     fields: fields,
     selfCheck: selfCheck,
     status: status,
-    note: identical(note, _keepNote) ? this.note : note as String?,
+    note: orKeep(note, this.note),
   );
 }
 
@@ -142,6 +138,35 @@ Map<String, Object?> _asMap(Object? v, String where) {
 /// compiles each pattern once. [FieldRule] is const, which rules out a
 /// late field on the instance.
 final Map<String, RegExp> _patternCache = {};
+
+/// Longest regex a recipe may carry. Field patterns are short by nature
+/// ("\\$([\\d,]+)"); anything longer is a mistake or an attempt to make the
+/// reader spin.
+const maxRecipePatternLength = 120;
+
+/// Nested quantifiers like `(a+)+` or `(.*)*` are the classic shape that
+/// makes a backtracking engine take exponential time on a non-match.
+final _nestedQuantifier = RegExp(r'\([^()]*[+*][^()]*\)\s*[+*{]');
+
+/// Returns [pattern] when it is small and free of nested quantifiers, or
+/// throws a [FormatException] naming the problem, so a recipe from disk can
+/// be refused before it ever runs against a page.
+String checkRecipePattern(String pattern, String field) {
+  if (pattern.length > maxRecipePatternLength) {
+    throw FormatException(
+      'recipe: "$field" pattern is longer than $maxRecipePatternLength characters',
+    );
+  }
+  if (_nestedQuantifier.hasMatch(pattern)) {
+    throw FormatException('recipe: "$field" pattern nests quantifiers, which can run forever');
+  }
+  try {
+    RegExp(pattern);
+  } on FormatException {
+    throw FormatException('recipe: "$field" pattern is not a valid regular expression');
+  }
+  return pattern;
+}
 
 /// Collapses runs of whitespace in a read value.
 final RegExp _whitespace = RegExp(r'\s+');
@@ -180,7 +205,11 @@ class FieldRule {
     return FieldRule(
       selector: json['selector'] as String? ?? '',
       attrs: [if (json['attr'] is String) json['attr'] as String, ...?(attrs as List?)?.cast()],
-      pattern: json['pattern'] as String?,
+      pattern: switch (json['pattern']) {
+        null => null,
+        final String p => checkRecipePattern(p, 'pattern'),
+        _ => throw const FormatException('recipe: "pattern" must be a string'),
+      },
     );
   }
 
@@ -212,7 +241,10 @@ class FieldRule {
     if (raw == null) return null;
     raw = raw.replaceAll(_whitespace, ' ').trim();
     if (pattern == null) return raw.isEmpty ? null : raw;
-    final re = _patternCache.putIfAbsent(pattern!, () => RegExp(pattern!, caseSensitive: false));
+    final re = _patternCache.putIfAbsent(
+      pattern!,
+      () => RegExp(checkRecipePattern(pattern!, 'field'), caseSensitive: false),
+    );
     final m = re.firstMatch(raw);
     if (m == null) return null;
     return (m.groupCount >= 1 ? m.group(1) : m.group(0))?.trim();
@@ -291,7 +323,10 @@ class SelfCheckRules {
     minCards: _optional<num>(json, 'minCards', 'selfCheck')?.toInt() ?? 3,
     minPriceFraction: _optional<num>(json, 'minPriceFraction', 'selfCheck')?.toDouble() ?? 0.8,
     minImageFraction: _optional<num>(json, 'minImageFraction', 'selfCheck')?.toDouble() ?? 0.0,
-    totalPattern: _optional<String>(json, 'totalPattern', 'selfCheck'),
+    totalPattern: switch (_optional<String>(json, 'totalPattern', 'selfCheck')) {
+      null => null,
+      final p => checkRecipePattern(p, 'totalPattern'),
+    },
     maxTotalRatio: _optional<num>(json, 'maxTotalRatio', 'selfCheck')?.toDouble() ?? 1.0,
   );
 
@@ -440,10 +475,14 @@ class RecipeReader {
       final priceRaw = recipe.fields['price']?.read(card);
       final mileageRaw = recipe.fields['mileage']?.read(card);
       final yearRaw = recipe.fields['year']?.read(card);
-      final heading = parseTitle(title);
+      // Some sites print the year apart from the name ("Kia Sorento SX" with
+      // "2021" in a details row); a `year` field puts it back in front so the
+      // heading parser and the tile both see "2021 Kia Sorento SX".
+      final fullTitle = parseTitle(title) == null && yearRaw != null ? '$yearRaw $title' : title;
+      final heading = parseTitle(fullTitle);
       final listing = VehicleListing(
         id: 'v${out.length + 1}',
-        title: title,
+        title: fullTitle,
         sourceUrl: sourceUrl,
         readAt: now,
         price: priceRaw == null ? null : tryParsePrice(priceRaw),
@@ -478,7 +517,10 @@ class RecipeReader {
     final problems = <String>[];
     int? pageTotal;
     if (rules.totalPattern != null) {
-      final t = RegExp(rules.totalPattern!, caseSensitive: false).firstMatch(pageText);
+      final t = RegExp(
+        checkRecipePattern(rules.totalPattern!, 'totalPattern'),
+        caseSensitive: false,
+      ).firstMatch(pageText);
       if (t != null) pageTotal = int.tryParse((t.group(1) ?? '').replaceAll(',', ''));
     }
     if (counts.cards == 0) {

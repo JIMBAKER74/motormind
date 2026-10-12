@@ -245,7 +245,11 @@ abstract final class AdvisorTools {
         'model': _string(),
         'max_mileage': _integer(),
         'min_year': _integer(),
-        'keywords': _string(description: 'free text the site should search for'),
+        'keywords': _string(
+          description:
+              'a make, model, trim or feature the user named; never a generic word like car, '
+              'a body style, or the site name',
+        ),
       }),
     ),
     ToolSpec(

@@ -1,3 +1,6 @@
+import '../format.dart';
+import '../parse.dart';
+import '../sentinel.dart';
 import 'listing_parse.dart';
 
 /// The live vehicle search: the standard questions every listing site asks,
@@ -80,23 +83,23 @@ class SearchQuery {
   /// Returns a copy with the given fields replaced. Passing null clears a
   /// field; omitting it keeps the current value.
   SearchQuery copyWith({
-    Object? bodyStyle = _unset,
-    Object? maxPrice = _unset,
-    Object? minPrice = _unset,
-    Object? make = _unset,
-    Object? model = _unset,
-    Object? maxMileage = _unset,
-    Object? minYear = _unset,
-    Object? keywords = _unset,
+    Object? bodyStyle = unset,
+    Object? maxPrice = unset,
+    Object? minPrice = unset,
+    Object? make = unset,
+    Object? model = unset,
+    Object? maxMileage = unset,
+    Object? minYear = unset,
+    Object? keywords = unset,
   }) => SearchQuery(
-    bodyStyle: identical(bodyStyle, _unset) ? this.bodyStyle : bodyStyle as String?,
-    maxPrice: identical(maxPrice, _unset) ? this.maxPrice : maxPrice as double?,
-    minPrice: identical(minPrice, _unset) ? this.minPrice : minPrice as double?,
-    make: identical(make, _unset) ? this.make : make as String?,
-    model: identical(model, _unset) ? this.model : model as String?,
-    maxMileage: identical(maxMileage, _unset) ? this.maxMileage : maxMileage as int?,
-    minYear: identical(minYear, _unset) ? this.minYear : minYear as int?,
-    keywords: identical(keywords, _unset) ? this.keywords : keywords as String?,
+    bodyStyle: orKeep(bodyStyle, this.bodyStyle),
+    maxPrice: orKeep(maxPrice, this.maxPrice),
+    minPrice: orKeep(minPrice, this.minPrice),
+    make: orKeep(make, this.make),
+    model: orKeep(model, this.model),
+    maxMileage: orKeep(maxMileage, this.maxMileage),
+    minYear: orKeep(minYear, this.minYear),
+    keywords: orKeep(keywords, this.keywords),
   );
 
   /// Applies `update_search` arguments (snake_case, strings or numbers).
@@ -112,19 +115,76 @@ class SearchQuery {
       q = q.copyWith(bodyStyle: b == null ? null : (normalizeBodyStyle(b) ?? b));
     }
     if (args.containsKey('max_price')) {
-      var p = _toNumber(args['max_price']);
+      var p = parseTolerantNumber(args['max_price']);
       if (p != null && p < _bareThousandsBelow) p *= 1000;
       q = q.copyWith(maxPrice: p);
     }
-    if (args.containsKey('min_price')) q = q.copyWith(minPrice: _toNumber(args['min_price']));
+    if (args.containsKey('min_price')) {
+      q = q.copyWith(minPrice: parseTolerantNumber(args['min_price']));
+    }
     if (args.containsKey('make')) q = q.copyWith(make: _toText(args['make']));
     if (args.containsKey('model')) q = q.copyWith(model: _toText(args['model']));
     if (args.containsKey('max_mileage')) {
-      q = q.copyWith(maxMileage: _toNumber(args['max_mileage'])?.round());
+      q = q.copyWith(maxMileage: parseTolerantNumber(args['max_mileage'])?.round());
     }
-    if (args.containsKey('min_year')) q = q.copyWith(minYear: _toNumber(args['min_year'])?.round());
-    if (args.containsKey('keywords')) q = q.copyWith(keywords: _toText(args['keywords']));
+    if (args.containsKey('min_year')) {
+      q = q.copyWith(minYear: parseTolerantNumber(args['min_year'])?.round());
+    }
+    if (args.containsKey('keywords')) {
+      final cleaned = cleanKeywords(_toText(args['keywords']));
+      q = q.copyWith(keywords: cleaned.keywords);
+      if (q.bodyStyle == null && cleaned.bodyStyle != null) {
+        q = q.copyWith(bodyStyle: cleaned.bodyStyle);
+      }
+    }
     return q;
+  }
+
+  /// Words that never narrow a vehicle search and must not reach the keyword
+  /// filter: a listing titled "2021 Honda CR-V" contains none of them, so a
+  /// keyword of "car" or the site's own name hides every listing on the page.
+  /// Observed from Gemma 4 E2B on a phone (2026-10-12): `keywords: "EchoPark"`
+  /// on the first turn, `keywords: "car"` on the second. The site names are
+  /// listed here rather than read from the curated sites to keep this file
+  /// free of that import; a test keeps the two in step.
+  static const Set<String> genericKeywords = {
+    'car',
+    'cars',
+    'vehicle',
+    'vehicles',
+    'auto',
+    'autos',
+    'used',
+    'new',
+    'listing',
+    'listings',
+    'inventory',
+    'search',
+    'echopark',
+    'cars.com',
+    'autotrader',
+  };
+
+  /// Strips [genericKeywords] and body-style words from a keyword string.
+  /// A body style found in it is returned separately so [applyArgs] can set
+  /// the field the model should have used ("SUV" as a keyword means
+  /// `body_style: suv`). Returns null keywords when nothing useful is left.
+  static ({String? keywords, String? bodyStyle}) cleanKeywords(String? raw) {
+    if (raw == null) return (keywords: null, bodyStyle: null);
+    var text = raw;
+    final style = normalizeBodyStyle(text);
+    if (style != null) {
+      for (final (_, pattern) in _bodyStylePatterns) {
+        // The patterns are lowercase; the keywords keep the model's casing
+        // so "Honda CR-V" is shown as written.
+        text = text.replaceAll(RegExp(pattern.pattern, caseSensitive: false), ' ');
+      }
+    }
+    final words = text
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty && !genericKeywords.contains(w.toLowerCase()))
+        .toList();
+    return (keywords: words.isEmpty ? null : words.join(' '), bodyStyle: style);
   }
 
   /// Serializes in the snake_case shape `update_search` uses; nulls are kept
@@ -186,28 +246,8 @@ class SearchQuery {
   ];
 }
 
-/// Marks an omitted argument in [SearchQuery.copyWith], so that an explicit
-/// null can mean "clear this field".
-const _unset = Object();
-
 /// A `max_price` below this is read as thousands; see [SearchQuery.applyArgs].
 const _bareThousandsBelow = 1000;
-
-/// A number from a tool argument: a `num` as is, or a string with an
-/// optional dollar sign, commas, spaces and a trailing `k` for thousands
-/// ("$9,500", "50k", "100K"). Null for anything else.
-double? _toNumber(Object? v) {
-  if (v is num) return v.toDouble();
-  if (v is! String) return null;
-  var s = v.replaceAll(RegExp(r'[\$,\s]'), '').toLowerCase();
-  var scale = 1.0;
-  if (s.endsWith('k')) {
-    scale = 1000;
-    s = s.substring(0, s.length - 1);
-  }
-  final n = double.tryParse(s);
-  return n == null ? null : n * scale;
-}
 
 /// Trimmed text from a tool argument; null for empty, "any" and "null",
 /// which the model sends to clear a filter.
@@ -221,14 +261,10 @@ String? _toText(Object? v) {
 
 /// "$50k" for round thousands, exact dollars ("$9,500", "$500") otherwise.
 String _dollars(double v) =>
-    v >= 1000 && v % 1000 == 0 ? '\$${(v / 1000).round()}k' : '\$${_grouped(v.round())}';
+    v >= 1000 && v % 1000 == 0 ? '\$${(v / 1000).round()}k' : wholeDollars(v);
 
 /// "100k mi" for round thousands, exact miles ("500 mi") otherwise.
-String _miles(int v) => v >= 1000 && v % 1000 == 0 ? '${v ~/ 1000}k mi' : '${_grouped(v)} mi';
-
-/// Thousands separators: 9500 → "9,500".
-String _grouped(int n) =>
-    n.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+String _miles(int v) => v >= 1000 && v % 1000 == 0 ? '${v ~/ 1000}k mi' : '${groupThousands(v)} mi';
 
 /// What the app can infer from a sentence without the model: a body style
 /// (including "sports car"), a price ceiling, a make, a mileage cap, a year.
@@ -270,8 +306,9 @@ const _maxCeiling = 500000.0;
 Map<String, Object?> _inferPrice(String t) {
   final m = _priceCeiling.firstMatch(t);
   if (m == null) return const {};
-  final v = m.group(1)!.replaceAll(',', '').replaceAll(' ', '').toLowerCase();
-  var p = v.endsWith('k') ? double.parse(v.substring(0, v.length - 1)) * 1000 : double.parse(v);
+  // The pattern only matches figures the parser accepts, so the result is
+  // never null.
+  var p = parseTolerantNumber(m.group(1))!;
   if (p < _bareThousandsBelow) p *= 1000; // "under 40" means $40,000
   return p >= _minCeiling && p <= _maxCeiling ? {'max_price': p} : const {};
 }

@@ -64,12 +64,15 @@ class SearchState {
   );
 }
 
-/// Reads a page for the search: the web pane by default; tests inject a fake.
-typedef PageReader = Future<PageExtract> Function(String url);
+/// Reads a page: the one at [url], or the page the person has open when
+/// [url] is null. The web pane by default; tests inject a fake. Both the
+/// live search and the model's `read_page` go through this seam, so a test
+/// can stand in for the pane in one place.
+typedef PageReader = Future<PageExtract> Function({String? url});
 
 final pageReaderProvider = Provider<PageReader>(
   (ref) =>
-      (url) => ref.read(browserProvider.notifier).readPage(url: url),
+      ({url}) => ref.read(browserProvider.notifier).readPage(url: url),
 );
 
 /// How long a run of chip taps is allowed to settle before the page loads.
@@ -82,8 +85,12 @@ final searchDebounceProvider = Provider<Duration>((ref) => const Duration(millis
 /// model.
 final searchProvider = NotifierProvider<SearchService, SearchState>(SearchService.new);
 
-class SearchService extends Notifier<SearchState> {
+final class SearchService extends Notifier<SearchState> {
   Timer? _debounce;
+
+  /// Images with an address on the page at the last check; see
+  /// [refreshImages].
+  int _lastImageCount = -1;
 
   /// Bumped per apply so a slower, older read cannot overwrite a newer one.
   int _generation = 0;
@@ -94,22 +101,23 @@ class SearchService extends Notifier<SearchState> {
   @override
   SearchState build() {
     ref.onDispose(() => _debounce?.cancel());
+    // Cards first: the site's own first page of inventory is read once at
+    // launch and shown as tiles, before anything is asked (design notes,
+    // DD-Q21; the owner's Q71). It is the one page the pane would open
+    // anyway, now the results page instead of the front page; nothing else
+    // loads until the person taps or types.
+    scheduleApply(delay: Duration.zero);
     return const SearchState();
   }
 
   CuratedSite get site => CuratedSites.byId(state.siteId) ?? CuratedSites.defaultSite;
 
-  /// Chooses where to look. Opens the site's home if nothing is filtered yet,
-  /// or re-applies the current filters there.
+  /// Chooses where to look and re-applies the current filters there; with
+  /// nothing filtered yet that is the site's first page of inventory.
   void selectSite(String id) {
     if (CuratedSites.byId(id) == null) return;
     state = state.copyWith(siteId: id, clearNote: true);
-    if (state.query.isEmpty) {
-      unawaited(ref.read(browserProvider.notifier).open(site.home));
-      ref.read(stageProvider.notifier).showWeb();
-    } else {
-      scheduleApply(delay: Duration.zero);
-    }
+    scheduleApply(delay: Duration.zero);
   }
 
   /// Records the person's expand or collapse of the filters card; null hands
@@ -140,6 +148,44 @@ class SearchService extends Notifier<SearchState> {
     _debounce = Timer(delay ?? ref.read(searchDebounceProvider), () => unawaited(apply()));
   }
 
+  /// Picks up the images the person's own browsing loaded: the open page is
+  /// read again as it is (no navigation, no scrolling), images are merged
+  /// into the listings already read, and the listings card is shown again
+  /// when any were filled. Called when the person comes back to Cards from
+  /// the web pane. Nothing happens while a search is being applied.
+  Future<void> refreshImages() async {
+    if (state.applying) return;
+    final store = ref.read(listingStoreProvider);
+    if (store.all.isEmpty || store.all.every((l) => l.imageUrl != null)) return;
+    final browser = ref.read(browserProvider.notifier);
+    final List<VehicleListing> fresh;
+    try {
+      // A full read parses the whole page; only do it when the page has
+      // more images than the last time it was asked.
+      final images = await browser.loadedImageCount();
+      if (images == _lastImageCount) return;
+      _lastImageCount = images;
+      fresh = await browser.rereadOpenPage();
+    } on Exception catch (e) {
+      logDev('image refresh failed: $e');
+      return;
+    }
+    if (fresh.isEmpty) return;
+    final filled = store.mergeImages(fresh);
+    logDev('images: filled $filled from the page as browsed');
+    if (filled == 0) return;
+    final q = state.query;
+    _showResults(
+      store.searchQuery(q, limit: stageListingLimit),
+      ref.read(browserProvider).url ?? site.home,
+      q,
+    );
+  }
+
+  /// Most listings the stage card lists; a results page holds about 20 to
+  /// 30, and the card scrolls.
+  static const stageListingLimit = 60;
+
   /// Opens the site's results page for the query, reads it, and shows what
   /// matched. Safe to call repeatedly; a newer call wins.
   Future<void> apply() async {
@@ -149,10 +195,12 @@ class SearchService extends Notifier<SearchState> {
     state = state.copyWith(applying: true, clearNote: true);
     ref.read(stageProvider.notifier).showWeb();
     try {
-      final extract = await ref.read(pageReaderProvider)(url);
+      final extract = await ref.read(pageReaderProvider)(url: url);
       if (gen != _generation) return; // superseded
       final store = ref.read(listingStoreProvider)..addAll(extract.listings);
-      final results = store.searchQuery(q);
+      // Every listing that matched goes on the stage (the card scrolls); the
+      // model's own tool keeps its small limit for the context's sake.
+      final results = store.searchQuery(q, limit: stageListingLimit);
       state = state.copyWith(applying: false, lastCount: results.length);
       _showResults(results, extract.url, q);
     } on PageChallengeException catch (e) {
@@ -181,22 +229,18 @@ class SearchService extends Notifier<SearchState> {
         if (results.isEmpty) 'note': ChatStrings.noListingsOnPage,
       },
     );
-    final v = PresentRequest.validate({
-      'component': 'vehicle_card',
-      'result_id': result.id,
-      'title': 'Listings · ${q.describe()}',
-    }, resultTool: AdvisorTools.findVehicles);
-    assert(v.errors.isEmpty, 'listings card rejected by the registry: ${v.errors}');
-    final request = v.request;
-    if (request == null) return;
+    final shown = validatedComponent(
+      {'component': 'vehicle_card', 'result_id': result.id, 'title': 'Listings · ${q.describe()}'},
+      id: ref.read(componentIdsProvider).next(),
+      resultTool: AdvisorTools.findVehicles,
+      result: result,
+    );
+    if (shown == null) return;
     final stage = ref.read(stageProvider.notifier);
     // One listings card at a time: the newest search replaces the last.
     stage.removeWhere((s) => s.result?.tool == AdvisorTools.findVehicles);
     // Cards come forward as soon as a search finds something; the page
     // stays one tap away, and the display decision may still choose it.
-    stage.show(
-      ShownComponent(request: request, result: result),
-      bringForward: results.isNotEmpty,
-    );
+    stage.show(shown, bringForward: results.isNotEmpty);
   }
 }

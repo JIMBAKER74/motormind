@@ -17,11 +17,14 @@ class BrowserState {
   final String? title;
   final bool loading;
 
-  BrowserState copyWith({String? url, String? title, bool? loading}) => BrowserState(
-    url: url ?? this.url,
-    title: title ?? this.title,
-    loading: loading ?? this.loading,
-  );
+  /// [url] and [title] may be set to null explicitly; leaving either out
+  /// keeps the current value.
+  BrowserState copyWith({Object? url = unset, Object? title = unset, bool? loading}) =>
+      BrowserState(
+        url: orKeep(url, this.url),
+        title: orKeep(title, this.title),
+        loading: loading ?? this.loading,
+      );
 }
 
 final browserProvider = NotifierProvider<BrowserService, BrowserState>(BrowserService.new);
@@ -52,7 +55,7 @@ typedef _PageSnapshot = ({String url, String title, String? image, String text, 
 ///
 /// Reading is user- or Motormind-initiated, one page at a time. Nothing
 /// is fetched in bulk and no page is loaded without a person behind it.
-class BrowserService extends Notifier<BrowserState> {
+final class BrowserService extends Notifier<BrowserState> {
   /// How long to wait for a navigation to finish before reading anyway.
   static const loadTimeout = Duration(seconds: 20);
 
@@ -73,16 +76,6 @@ class BrowserService extends Notifier<BrowserState> {
   /// tokens, more than any context window here) and 1.5 MB of HTML.
   static const _maxTextChars = 60000;
   static const _maxHtmlChars = 1500000;
-
-  /// A scroll step is most of a screen, so nothing between steps is missed.
-  static const _scrollScreenFraction = 0.9;
-
-  /// The paced scroll after the app opens a results page: a screen at a time
-  /// with a pause, so lazily rendered cards and images exist before the read.
-  /// Six screens covers a first results page on every curated site.
-  static const _scrollSteps = 6;
-  static const _scrollPause = Duration(milliseconds: 450);
-  static const _scrollReturnPause = Duration(milliseconds: 400);
 
   /// Only the title and the first part of the text decide whether a page is
   /// a bot check: the markers sit at the top of those pages.
@@ -116,6 +109,8 @@ class BrowserService extends Notifier<BrowserState> {
     state = state.copyWith(url: url, loading: true);
   }
 
+  /// A finished load with no address or title clears the old one rather than
+  /// leaving a stale address under a page that is not there any more.
   void onLoadStop(String? url, String? title) {
     state = state.copyWith(url: url, title: title, loading: false);
     final pending = _loaded;
@@ -123,10 +118,21 @@ class BrowserService extends Notifier<BrowserState> {
     _loaded = null;
   }
 
+  /// True for a web address the pane may load: an absolute http(s) URL.
+  /// Everything else (javascript:, file:, data:, a bare word) is refused
+  /// before it reaches the WebView, because a programmatic load does not go
+  /// through the pane's navigation delegate on Android.
+  static bool isWebUrl(String? url) {
+    final u = Uri.tryParse(url ?? '');
+    return u != null && (u.scheme == 'https' || u.scheme == 'http') && u.host.isNotEmpty;
+  }
+
   /// Navigates the pane. The load completer is created here, not in
   /// [onLoadStart], so a read that follows an [open] waits for this load and
-  /// not for whichever load happened before.
+  /// not for whichever load happened before. Refuses anything that is not
+  /// a web address (see [isWebUrl]).
   Future<void> open(String url) async {
+    if (!isWebUrl(url)) throw ArgumentError.value(url, 'url', 'not a web address');
     _loaded = Completer<void>();
     state = state.copyWith(url: url, loading: true);
     final c = _controller;
@@ -144,10 +150,14 @@ class BrowserService extends Notifier<BrowserState> {
     return null;
   }
 
-  /// Reads the page: waits for the load, lets the cards render, scrolls once
-  /// if the app itself opened the page, refuses a bot check, then reads with
-  /// the site's recipe when one applies and passes its self-check, otherwise
-  /// with the generic text patterns (ADR 0007).
+  /// Reads the page: waits for the load, lets the cards render, refuses a
+  /// bot check, then reads with the site's recipe when one applies and
+  /// passes its self-check, otherwise with the generic text patterns
+  /// (ADR 0007). The app never scrolls a page: what a site renders lazily
+  /// (images, mostly) arrives as the person browses, and [rereadOpenPage]
+  /// picks it up from the page as it is. An earlier paced scroll was removed
+  /// at the owner's request (2026-10-12): it interrupted the person to fetch
+  /// what their own browsing was already producing.
   Future<PageExtract> readPage({String? url, Duration timeout = loadTimeout}) async {
     final appOpened = url != null && url != state.url;
     if (appOpened) await open(url);
@@ -155,11 +165,7 @@ class BrowserService extends Notifier<BrowserState> {
     final c = _controller;
     if (c == null) throw StateError('The web pane is not open.');
 
-    var page = await _probeUntilRendered(c);
-    if (appOpened && !_looksLikeChallenge(page)) {
-      await _scrollToLoad(c);
-      page = await _snapshot(c);
-    }
+    final page = await _probeUntilRendered(c);
     if (_looksLikeChallenge(page)) {
       state = state.copyWith(url: page.url, title: page.title);
       throw const PageChallengeException();
@@ -180,6 +186,34 @@ class BrowserService extends Notifier<BrowserState> {
       imageUrl: page.image,
       listings: listings,
     );
+  }
+
+  /// How many images on the open page have an address, the cheap question
+  /// asked every few seconds while the page is in view; a re-read is worth
+  /// doing only when the answer changed. Zero when no pane is open.
+  Future<int> loadedImageCount() async {
+    final c = _controller;
+    if (c == null) return 0;
+    final raw = await c.runJavaScriptReturningResult(_imageCountJs);
+    return int.tryParse(raw.toString().replaceAll('"', '')) ?? 0;
+  }
+
+  static const _imageCountJs =
+      '(function(){var n=0;var im=document.images;'
+      'for(var i=0;i<im.length;i++){if(im[i].currentSrc||im[i].getAttribute("src")){n++;}}'
+      'return n;})();';
+
+  /// Reads the open page again as it is, with the site's recipe: no
+  /// navigation, no probing, no scrolling. Used to pick up the images the
+  /// person's own browsing has made the page load (lazy carousels fill in
+  /// as they scroll). Empty when no pane is open or the recipe does not
+  /// read the page.
+  Future<List<VehicleListing>> rereadOpenPage() async {
+    final c = _controller;
+    if (c == null) return const [];
+    final page = await _snapshot(c);
+    if (_looksLikeChallenge(page)) return const [];
+    return _readWithRecipe(page, DateTime.now());
   }
 
   /// The page as the person sees it right now, for Capture: fresh HTML,
@@ -234,21 +268,6 @@ class BrowserService extends Notifier<BrowserState> {
     return r.check.ok ? r.listings : const [];
   }
 
-  /// Scrolls the way a person would, a screen at a time with a pause, then
-  /// returns to the top. Only right after the app itself opened a results
-  /// page; never on a page the person is reading.
-  Future<void> _scrollToLoad(WebViewController c) async {
-    for (var i = 0; i < _scrollSteps; i++) {
-      // runJavaScriptReturningResult returns a platform-typed Object; the
-      // string compare is the portable way to read a JS boolean.
-      final atBottom = await c.runJavaScriptReturningResult(_scrollStepJs);
-      await Future<void>.delayed(_scrollPause);
-      if (atBottom.toString() == 'true') break;
-    }
-    await c.runJavaScript('window.scrollTo({top: 0, behavior: "smooth"});');
-    await Future<void>.delayed(_scrollReturnPause);
-  }
-
   Future<_PageSnapshot> _snapshot(WebViewController c) async {
     final map = _decode(await c.runJavaScriptReturningResult(_extractJs));
     return (
@@ -281,12 +300,6 @@ class BrowserService extends Notifier<BrowserState> {
     }
     return decoded is Map ? decoded.cast<String, Object?>() : <String, Object?>{};
   }
-
-  /// Scrolls down most of a screen and reports whether the bottom was reached
-  /// (within a few pixels, so a sub-pixel overshoot does not loop).
-  static const _scrollStepJs =
-      '(function(){window.scrollBy({top: window.innerHeight * $_scrollScreenFraction, behavior: "smooth"});'
-      'return (window.innerHeight + window.scrollY) >= document.body.scrollHeight - 10;})();';
 
   /// Visible text and rendered HTML in one call. The text comes from a clone
   /// of `body` with scripts, navigation, headers, footers and hidden elements

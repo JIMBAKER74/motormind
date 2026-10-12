@@ -2,8 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/router.dart';
+import '../../services/advisor_model_service.dart';
 import '../advisor/display_agent.dart';
+import '../models/model_catalog.dart';
 import '../search/search_service.dart';
 import 'chat_service.dart';
 import 'chat_strings.dart';
@@ -99,13 +103,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
         Expanded(
           child: !chat.ready
-              ? Center(
-                  child: FilledButton.icon(
-                    key: const Key('chat-start'),
-                    onPressed: chat.busy ? null : ref.read(chatServiceProvider.notifier).start,
-                    icon: const Icon(Icons.play_arrow),
-                    label: Text(chat.busy ? ChatStrings.starting : ChatStrings.askMotormind),
-                  ),
+              // No start button: the conversation starts itself when the
+              // model is ready, and the input below is live meanwhile.
+              ? const SingleChildScrollView(
+                  key: Key('chat-start'),
+                  padding: EdgeInsets.all(12),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [_ModelStatus()]),
                 )
               : ListView(
                   key: const Key('chat-list'),
@@ -150,7 +153,6 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                   child: TextField(
                     key: const Key('chat-input'),
                     controller: _input,
-                    enabled: chat.ready,
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
@@ -165,7 +167,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                 const SizedBox(width: 8),
                 IconButton.filled(
                   key: const Key('chat-send'),
-                  onPressed: chat.ready ? _send : null,
+                  onPressed: _send,
                   icon: const Icon(Icons.send),
                 ),
               ],
@@ -296,3 +298,90 @@ String plainText(String text) => text
     .replaceAll('**', '')
     .replaceAllMapped(RegExp(r'^\s*[-*]\s+', multiLine: true), (_) => '• ')
     .trim();
+
+/// What the model is doing while there is no conversation yet, so the
+/// start button never sits beside a blank: loading, downloading, or an
+/// offer to download the model that fits this phone. Nothing here asks
+/// the person to know what a model is; the Models screen is one tap away
+/// for anyone who does.
+class _ModelStatus extends ConsumerWidget {
+  const _ModelStatus();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final models = ref.watch(advisorModelServiceProvider).value;
+    if (models == null) return const SizedBox.shrink();
+    final service = ref.read(advisorModelServiceProvider.notifier);
+    // The model in play: the active one, else whichever is busy, else the
+    // one this phone can run.
+    final spec =
+        ModelCatalog.all.where((m) {
+          final s = models.statusOf(m);
+          return m.id == models.activeId || s is ModelLoading || s is ModelDownloading;
+        }).firstOrNull ??
+        models.recommended;
+    final status = models.statusOf(spec);
+    final Widget body = switch (status) {
+      ModelReady() => const SizedBox.shrink(),
+      ModelLoading() => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 10),
+          Text(ChatStrings.loadingModel(spec.displayName), key: const Key('model-loading')),
+        ],
+      ),
+      ModelDownloading(:final percent) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(ChatStrings.downloadingModel(spec.displayName, percent)),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: 220,
+            child: LinearProgressIndicator(value: percent <= 0 ? null : percent / 100),
+          ),
+        ],
+      ),
+      ModelInstalled() => const SizedBox.shrink(), // loading is about to start
+      ModelNotInstalled() => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(ChatStrings.noModel, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 8),
+          FilledButton.tonalIcon(
+            key: const Key('model-download'),
+            onPressed: () => service.download(spec),
+            icon: const Icon(Icons.download),
+            label: Text(ChatStrings.downloadModel(spec.displayName, spec.sizeLabel)),
+          ),
+        ],
+      ),
+      ModelFailed(:final message) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, style: TextStyle(color: theme.colorScheme.error)),
+          const SizedBox(height: 8),
+          FilledButton.tonal(
+            onPressed: () => service.download(spec),
+            child: const Text(ChatStrings.modelRetry),
+          ),
+        ],
+      ),
+    };
+    if (status is ModelReady) return body;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          body,
+          TextButton(
+            onPressed: () => context.push(Routes.models),
+            child: const Text(ChatStrings.otherModels),
+          ),
+        ],
+      ),
+    );
+  }
+}

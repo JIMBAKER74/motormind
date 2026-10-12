@@ -24,8 +24,10 @@ class _BrowserPaneState extends ConsumerState<BrowserPane> {
     super.initState();
     final service = ref.read(browserProvider.notifier);
     // BrowserService.open stores the URL even before the pane exists; this
-    // is where that promise is kept.
-    final initial = ref.read(browserProvider).url ?? CuratedSites.defaultSite.home;
+    // is where that promise is kept. With no URL yet, the default site's
+    // first page of inventory, which the launch search reads.
+    final initial =
+        ref.read(browserProvider).url ?? CuratedSites.defaultSite.urlFor(const SearchQuery());
     _controller = WebViewController()
       // read_page injects JavaScript to collect the page's text and HTML.
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -35,10 +37,15 @@ class _BrowserPaneState extends ConsumerState<BrowserPane> {
           onPageFinished: (url) async => service.onLoadStop(url, await _controller.getTitle()),
           // Read-only browsing policy (VA-6.1.1): web pages only; no external
           // schemes, no downloads.
-          onNavigationRequest: (req) =>
-              req.url.startsWith('http') ? NavigationDecision.navigate : NavigationDecision.prevent,
+          onNavigationRequest: (req) => BrowserService.isWebUrl(req.url)
+              ? NavigationDecision.navigate
+              : NavigationDecision.prevent,
         ),
       )
+      // Loaded here, not through BrowserService.open: this runs while the
+      // tree is building and a provider may not change state then. The
+      // launch read already called open() before the pane existed, so its
+      // completer is the one this load completes.
       ..loadRequest(Uri.parse(initial));
     service.attach(_controller);
   }

@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../services/advisor_model_service.dart';
 import '../chat/chat_panel.dart';
+import '../chat/chat_service.dart';
 import 'display_agent.dart';
 import 'stage.dart';
 
@@ -11,7 +15,7 @@ import 'stage.dart';
 /// that holds the state against requests is planned, not built.
 final surfaceProvider = NotifierProvider<SurfaceNotifier, SurfaceState>(SurfaceNotifier.new);
 
-class SurfaceNotifier extends Notifier<SurfaceState> {
+final class SurfaceNotifier extends Notifier<SurfaceState> {
   @override
   SurfaceState build() => SurfaceState.collapsed;
 
@@ -49,6 +53,19 @@ class AdvisorSurfaceHost extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(surfaceProvider);
+    // Watched from the first frame so the installed model starts loading at
+    // launch, not when the panel first opens; the panel only shows the load.
+    // The conversation starts itself the moment the model is ready, so the
+    // opening question is waiting when the person looks, with nothing to tap
+    // first ("always on": the owner, 2026-10-12).
+    ref.listen(advisorModelServiceProvider, (_, models) {
+      final ready = models.value?.activeId != null;
+      final chat = ref.read(chatServiceProvider);
+      if (ready && !chat.ready && !chat.busy) {
+        unawaited(ref.read(chatServiceProvider.notifier).start());
+      }
+    });
+    ref.watch(advisorModelServiceProvider);
     // The display decision picks Web or Cards for the stage; a manual flip
     // wins. Listened here because this host outlives the stage view.
     ref.listen(displayProvider, (_, d) => ref.read(stageProvider.notifier).applyDecision(d.stage));
@@ -162,9 +179,9 @@ class _Panel extends ConsumerWidget {
   }
 }
 
-/// The display agent's indicator (the design rule: the person only needs to know the screen may change): a small fixed mark that the
-/// screen may change, never a row. The tooltip says who decided and how long
-/// it took.
+/// The display agent's indicator: a small fixed mark, never a row, because
+/// the person only needs to know that the screen may change. The tooltip
+/// says who decided and how long it took.
 class _DisplayIndicator extends StatelessWidget {
   const _DisplayIndicator({required this.decision});
 

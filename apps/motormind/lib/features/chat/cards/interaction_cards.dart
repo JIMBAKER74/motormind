@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../chat_state.dart';
+import 'card_shell.dart';
 
 /// A question with a few answers, from the model's `present(choice)` or from
 /// the app's own starters. Once answered it collapses to its question in
@@ -17,44 +18,45 @@ class ChoiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final req = shown.request;
     final options = (req.props['options'] as List?)?.cast<Map>() ?? const [];
-    if (shown.answered) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(
-          '${req.props['question'] ?? ''}',
-          style: theme.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
-        ),
-      );
-    }
-    return Card(
-      key: const Key('card-choice'),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    if (shown.answered) return _AnsweredLine('${req.props['question'] ?? ''}');
+    return CardShell(
+      id: 'choice',
+      title: '${req.props['question'] ?? req.title ?? ''}',
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
           children: [
-            Text('${req.props['question'] ?? req.title ?? ''}', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final o in options)
-                  ActionChip(
-                    key: Key('choice-${o['id']}'),
-                    label: Text('${o['label']}'),
-                    onPressed: () => onChoice('${o['id']}', '${o['label']}'),
-                  ),
-              ],
-            ),
+            for (final o in options)
+              ActionChip(
+                key: Key('choice-${o['id']}'),
+                label: Text('${o['label']}'),
+                onPressed: () => onChoice('${o['id']}', '${o['label']}'),
+              ),
           ],
         ),
-      ),
+      ],
     );
   }
+}
+
+/// What an answered prompt collapses to: its question in italics, so the
+/// transcript keeps the context without the buttons.
+class _AnsweredLine extends StatelessWidget {
+  const _AnsweredLine(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Text(
+      text,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+    ),
+  );
 }
 
 /// A short form (one to six fields) for numbers the model needs before a
@@ -93,52 +95,39 @@ class _FormCardState extends State<FormCard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final title =
         '${widget.shown.request.props['title'] ?? widget.shown.request.title ?? 'A few details'}';
-    if (widget.shown.answered) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(title, style: theme.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic)),
-      );
-    }
-    return Card(
-      key: const Key('card-input_form'),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            for (final f in _fields)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: TextField(
-                  key: Key('field-${f['id']}'),
-                  controller: _controllers.putIfAbsent('${f['id']}', TextEditingController.new),
-                  keyboardType: f['type'] == 'text'
-                      ? TextInputType.text
-                      : const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: '${f['label']}',
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
+    if (widget.shown.answered) return _AnsweredLine(title);
+    return CardShell(
+      id: 'input_form',
+      title: title,
+      children: [
+        for (final f in _fields)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: TextField(
+              key: Key('field-${f['id']}'),
+              controller: _controllers.putIfAbsent('${f['id']}', TextEditingController.new),
+              keyboardType: f['type'] == 'text'
+                  ? TextInputType.text
+                  : const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: '${f['label']}',
+                isDense: true,
+                border: const OutlineInputBorder(),
               ),
-            const SizedBox(height: 8),
-            FilledButton(
-              key: const Key('form-submit'),
-              onPressed: () {
-                final text = _sentence();
-                widget.onSubmit(text.isEmpty ? 'I would rather explain.' : text);
-              },
-              child: const Text('Use these'),
             ),
-          ],
+          ),
+        const SizedBox(height: 8),
+        FilledButton(
+          key: const Key('form-submit'),
+          onPressed: () {
+            final text = _sentence();
+            widget.onSubmit(text.isEmpty ? 'I would rather explain.' : text);
+          },
+          child: const Text('Use these'),
         ),
-      ),
+      ],
     );
   }
 }

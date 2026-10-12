@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/widgets/compact_chip.dart';
 import '../../services/advisor_model_service.dart';
 import '../../services/token_store.dart';
 import '../advisor/display_agent.dart';
@@ -167,8 +168,7 @@ class _ModelCard extends ConsumerWidget {
             Row(
               children: [
                 Expanded(child: Text(spec.displayName, style: theme.textTheme.titleMedium)),
-                if (isDefault)
-                  const Chip(label: Text('Default'), visualDensity: VisualDensity.compact),
+                if (isDefault) const CompactChip(label: Text('Default')),
               ],
             ),
             const SizedBox(height: 4),

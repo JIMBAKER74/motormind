@@ -4,7 +4,7 @@ sealed class DriverChunk {
 }
 
 /// A piece of the reply text meant for the person.
-class DriverText extends DriverChunk {
+final class DriverText extends DriverChunk {
   /// Creates a text chunk carrying [text].
   const DriverText(this.text);
 
@@ -13,7 +13,7 @@ class DriverText extends DriverChunk {
 }
 
 /// A piece of the model's reasoning, kept apart from the reply.
-class DriverThinking extends DriverChunk {
+final class DriverThinking extends DriverChunk {
   /// Creates a thinking chunk carrying [text].
   const DriverThinking(this.text);
 
@@ -32,8 +32,9 @@ typedef ToolCallHandler =
 /// implementation wraps `InferenceChat.generateChatResponseWithTools`; tests
 /// use a scripted fake. The driver owns the chat history and the system
 /// instruction it was created with; the pipeline owns everything that
-/// happens around a turn.
-abstract class ChatDriver {
+/// happens around a turn. An interface, not a base class: there is no shared
+/// behavior to inherit, only a contract to implement.
+abstract interface class ChatDriver {
   /// Sends [userText] as the user's turn and streams the model's reply. Tool
   /// calls are routed to [onToolCall] and their results fed back to the model
   /// by the driver before generation continues.

@@ -1,3 +1,4 @@
+import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// What the person did with listings: viewed (opened the detail), liked,
@@ -25,24 +26,24 @@ final listingSignalsProvider = NotifierProvider<ListingSignalsNotifier, ListingS
 );
 
 /// Records viewed, liked and dismissed listings by a stable key.
-class ListingSignalsNotifier extends Notifier<ListingSignals> {
+final class ListingSignalsNotifier extends Notifier<ListingSignals> {
   @override
   ListingSignals build() => const ListingSignals();
 
   /// "title|price" with whole dollars, so the same car read twice counts
   /// once and the key reads well in widget tests.
-  static String keyFor(Map l) => '${l['title']}|${(l['price'] as num?)?.round()}';
+  static String keyFor(VehicleListing l) => '${l.title}|${l.price?.round()}';
 
-  void markViewed(Map l) => state = state.copyWith(viewed: {...state.viewed, keyFor(l)});
+  void markViewed(VehicleListing l) => state = state.copyWith(viewed: {...state.viewed, keyFor(l)});
 
-  void toggleLiked(Map l) {
+  void toggleLiked(VehicleListing l) {
     final k = keyFor(l);
     final liked = {...state.liked};
     if (!liked.remove(k)) liked.add(k);
     state = state.copyWith(liked: liked, dismissed: {...state.dismissed}..remove(k));
   }
 
-  void dismiss(Map l) {
+  void dismiss(VehicleListing l) {
     final k = keyFor(l);
     state = state.copyWith(dismissed: {...state.dismissed, k}, liked: {...state.liked}..remove(k));
   }
@@ -50,22 +51,69 @@ class ListingSignalsNotifier extends Notifier<ListingSignals> {
   /// A short line for the model's context ("viewed 3 (Honda); liked 1
   /// (Honda)"). Only makes are named, so the model cannot turn this into a
   /// figure it then quotes.
-  String? summary(List<Map> listings) {
+  String? summary(List<VehicleListing> listings) {
     if (state.viewed.isEmpty && state.liked.isEmpty) return null;
-    final likedMakes = <String>[
-      for (final l in listings)
-        if (state.liked.contains(keyFor(l)) && l['make'] != null) '${l['make']}',
-    ];
-    final viewedMakes = <String>[
-      for (final l in listings)
-        if (state.viewed.contains(keyFor(l)) && l['make'] != null) '${l['make']}',
-    ];
+    final viewedMakes = _makesIn(listings, state.viewed);
+    final likedMakes = _makesIn(listings, state.liked);
     final parts = <String>[
       if (state.viewed.isNotEmpty)
-        'viewed ${state.viewed.length}${viewedMakes.isEmpty ? '' : ' (${viewedMakes.toSet().join(', ')})'}',
+        'viewed ${state.viewed.length}${viewedMakes.isEmpty ? '' : ' (${viewedMakes.join(', ')})'}',
       if (state.liked.isNotEmpty)
-        'liked ${state.liked.length}${likedMakes.isEmpty ? '' : ' (${likedMakes.toSet().join(', ')})'}',
+        'liked ${state.liked.length}${likedMakes.isEmpty ? '' : ' (${likedMakes.join(', ')})'}',
     ];
     return parts.join('; ');
+  }
+
+  /// The distinct makes among [listings] whose key is in [keys], in the
+  /// order they appear.
+  static Set<String> _makesIn(List<VehicleListing> listings, Set<String> keys) => {
+    for (final l in listings)
+      if (keys.contains(keyFor(l)) && l.make != null) l.make!,
+  };
+}
+
+/// The listing (by signal key) whose photo the person asked to see big,
+/// after Motormind noticed them tapping it. Session-scoped; null for none.
+final bigPhotoProvider = NotifierProvider<BigPhotoNotifier, String?>(BigPhotoNotifier.new);
+
+final class BigPhotoNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void show(String? key) => state = key;
+}
+
+/// Counts repeated taps on one listing, the signal behind "I see you
+/// tapping that one". Three taps on the same tile inside [window] is a
+/// person repeating themselves because the first tap did not give them
+/// what they wanted: a behavior that does not match what the element is
+/// for, which is the clearest sign they are not finding what they want. Not
+/// necessarily quick: someone who does not know what to expect taps slowly
+/// (the owner, 2026-10-12). The app answers instead of waiting for a design
+/// cycle to notice.
+final class RepeatedTaps {
+  /// Taps within this long of each other count as one run.
+  static const window = Duration(seconds: 60);
+
+  /// Taps in a run that mean the person wants something else.
+  static const threshold = 3;
+
+  String? _key;
+  int _count = 0;
+  DateTime? _last;
+
+  /// Records a tap on [key] at [now]; true when the run reached [threshold],
+  /// after which the count starts over.
+  bool tap(String key, DateTime now) {
+    final last = _last;
+    if (key != _key || last == null || now.difference(last) > window) {
+      _key = key;
+      _count = 0;
+    }
+    _count++;
+    _last = now;
+    if (_count < threshold) return false;
+    _count = 0;
+    return true;
   }
 }

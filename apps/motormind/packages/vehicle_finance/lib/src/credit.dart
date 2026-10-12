@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'assumption.dart';
+import 'enums.dart';
 
 /// Credit bands shown to the user. Score ranges follow the VantageScore tiers
 /// commonly used in auto-finance reporting (super prime through deep subprime),
@@ -37,13 +38,7 @@ enum CreditBand {
   /// case and surrounding whitespace.
   ///
   /// Throws an [ArgumentError] for anything that is not one of [values].
-  static CreditBand parse(String value) {
-    final name = value.trim().toLowerCase();
-    return values.firstWhere(
-      (band) => band.name == name,
-      orElse: () => throw ArgumentError.value(value, 'value', 'unknown credit band'),
-    );
-  }
+  static CreditBand parse(String value) => requireEnumByName(values, value, 'credit band');
 }
 
 /// Maps a numeric score to a band.

@@ -1,3 +1,5 @@
+import 'package:vehicle_finance/vehicle_finance.dart' show enumByName;
+
 /// Where Motormind's surface sits on screen.
 enum SurfaceState {
   /// Hidden; nothing but the conversation is shown.
@@ -274,8 +276,9 @@ abstract final class ComponentRegistry {
   static UiComponent? byId(String id) => _byId[id];
 
   /// The component the app shows for a tool result when the model computed
-  /// something and did not call `present` (DD principle 1: the model decides
-  /// what to show, but a computed number never stays hidden in prose).
+  /// something and did not call `present`. The model decides what to show,
+  /// but a computed number never stays hidden in prose: a card with the
+  /// figure is the floor, and the model may replace it with a better one.
   static UiComponent? defaultFor(String tool) => switch (tool) {
     'estimate_payment' => paymentSummary,
     'trade_equity' => tradeEquityCard,
@@ -295,7 +298,7 @@ abstract final class ComponentRegistry {
 }
 
 /// A validated `present` tool call.
-class PresentRequest {
+final class PresentRequest {
   /// Creates a request directly; [validate] builds one from model arguments.
   const PresentRequest({
     required this.component,
@@ -397,7 +400,7 @@ class PresentRequest {
   /// Adds to [errors] when it is unknown or collapsed.
   static SurfaceState? _parseSurface(Object? raw, List<String> errors) {
     if (raw == null) return null;
-    final surface = SurfaceState.values.where((s) => s.name == raw.toString()).firstOrNull;
+    final surface = enumByName(SurfaceState.values, raw);
     if (surface == null || surface == SurfaceState.collapsed) {
       errors.add('surface must be "docked" or "fullscreen"');
       return null;

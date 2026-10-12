@@ -2,7 +2,18 @@
 /// reviewable diff rather than a scavenger hunt (the same rule disclosures
 /// follow in `advisor_core`).
 abstract final class ChatStrings {
-  static const noModel = 'No model is loaded. Open Models and choose one.';
+  static const noModel = 'Motormind needs a model on this phone before it can answer.';
+  static const otherModels = 'Other models';
+  static const modelRetry = 'Retry';
+
+  /// The panel's line while a model comes into memory (about fifteen
+  /// seconds for Gemma 4 E2B on a 2022 flagship).
+  static String loadingModel(String name) => 'Loading $name… this takes a few seconds.';
+
+  static String downloadingModel(String name, int percent) => 'Downloading $name · $percent%';
+
+  /// The one-tap offer when nothing is installed; [size] is the download.
+  static String downloadModel(String name, String size) => 'Download $name ($size)';
   static const startFailed = 'Motormind could not start.';
   static const tooLong = 'Motormind took too long to answer.';
   static const contextFull =
@@ -26,10 +37,52 @@ abstract final class ChatStrings {
   static const captureFailed = 'The page could not be captured.';
   static const askMotormind = 'Ask Motormind';
   static const starting = 'Starting…';
+
+  /// What Motormind says when the person keeps tapping one card: the taps
+  /// are a signal, and asking beats guessing (the owner, 2026-10-12: "I see
+  /// you tapping, how can I help?").
+  static const tappingQuestion = 'I see you tapping that one. What would help?';
+  static const biggerPhoto = 'A bigger photo';
+  static const openOnSite = 'Open it on the site';
+  static const nothingThanks = 'Nothing, thanks';
+
+  /// Shown in place of a part of the screen that hit a bug; the rest of the
+  /// app keeps working and Motormind is told.
+  static const partBroke = 'This part of the screen hit a bug. The rest keeps working.';
   static const showSoFar = 'Show what you have so far';
   static const hintPending = 'Something else? Type it here…';
   static const hintFiltered = 'Tell me more: must-haves, a budget, a trade-in…';
   static const hintDefault = 'Tell me about the car you have in mind…';
+
+  // The filters card.
+  static const filtersTitle = 'What are we looking for?';
+  static const anyType = 'Any type';
+  static const anyPrice = 'Any price';
+  static const anyMiles = 'Any miles';
+  static const lookOn = 'Look on';
+  static const collapse = 'Collapse';
+  static const reading = 'reading…';
+
+  /// The stage's label while the app opens and reads a site's page, so the
+  /// page moving on its own is seen as the read it is, not a bug.
+  static String readingSite(String site) => 'Reading $site…';
+
+  /// A price ceiling chip, in thousands ("Under \$35k").
+  static String underPrice(int dollars) => 'Under \$${dollars ~/ 1000}k';
+
+  /// A price band chip: "Under \$25k", "\$25k–\$40k", "Over \$60k".
+  static String priceBand(int? min, int? max) => switch ((min, max)) {
+    (null, final int max) => underPrice(max),
+    (final int min, null) => 'Over \$${min ~/ 1000}k',
+    (final int min, final int max) => '\$${min ~/ 1000}k–\$${max ~/ 1000}k',
+    (null, null) => anyPrice,
+  };
+
+  /// A mileage ceiling chip, in thousands ("Under 50k mi").
+  static String underMiles(int miles) => 'Under ${miles ~/ 1000}k mi';
+
+  /// The search status once a page was read.
+  static String matchedCount(int n) => '$n matched';
 
   static String stoppedAfter(int seconds) =>
       'Stopped: Motormind went $seconds seconds without a word. Try a shorter message.';

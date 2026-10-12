@@ -8,7 +8,7 @@ import 'tool_spec.dart';
 /// The [id] is what `present` refers to, and [result] is what the narration
 /// guard trusts. [error] is set instead of [result] when arguments were bad;
 /// the model is shown the error text and asked to correct the call.
-class ToolResult {
+final class ToolResult {
   /// Creates a result; set [result] on success or [error] on refusal.
   const ToolResult({
     required this.id,
@@ -326,18 +326,9 @@ class FinanceToolHandlers {
     return fallback;
   }
 
-  static String _requireString(Object? v, String name) {
-    if (v == null) throw ArgumentError('$name is required');
-    return v.toString();
-  }
-
   /// Looks [v] up in [values] by name, ignoring case and whitespace, so a
-  /// number or a capitalized name never escapes as a TypeError.
-  static T _requireEnum<T extends Enum>(List<T> values, Object? v, String name) {
-    final text = _requireString(v, name).toLowerCase().trim();
-    for (final value in values) {
-      if (value.name == text) return value;
-    }
-    throw ArgumentError('$name must be one of ${values.map((e) => e.name).join(', ')}');
-  }
+  /// number or a capitalized name never escapes as a TypeError; the error
+  /// message lists the names the model may use.
+  static T _requireEnum<T extends Enum>(List<T> values, Object? v, String name) =>
+      requireEnumByName(values, v, name);
 }

@@ -1,7 +1,9 @@
 import 'package:advisor_core/advisor_core.dart';
 import 'package:test/test.dart';
 
-final _now = DateTime(2026, 10, 6);
+import 'test_support.dart';
+
+final _now = testReadAt;
 
 VehicleListing _listing(
   String id,
@@ -99,5 +101,63 @@ void main() {
     );
     expect(a.dedupeKey, b.dedupeKey);
     expect(a.dedupeKey, isNot(_listing('a', '2021 Honda CR-V EX', price: 27995).dedupeKey));
+  });
+
+  group('mergeImages', () {
+    test('fills images the page loaded later, by dedupe key, and nothing else', () {
+      final now = DateTime(2026, 10, 12);
+      final store = ListingStore()
+        ..addAll([
+          VehicleListing(
+            id: 'a',
+            title: '2021 Kia Sorento SX',
+            sourceUrl: 'u',
+            readAt: now,
+            price: 19422,
+            mileage: 77000,
+          ),
+          VehicleListing(
+            id: 'b',
+            title: '2024 Nissan LEAF S',
+            sourceUrl: 'u',
+            readAt: now,
+            price: 15722,
+            mileage: 5000,
+            imageUrl: 'https://img/leaf.jpg',
+          ),
+        ]);
+      final filled = store.mergeImages([
+        VehicleListing(
+          id: 'x',
+          title: '2021 Kia Sorento SX',
+          sourceUrl: 'u',
+          readAt: now,
+          price: 19422,
+          mileage: 77000,
+          imageUrl: 'https://img/sorento.jpg',
+        ),
+        VehicleListing(
+          id: 'y',
+          title: '2024 Nissan LEAF S',
+          sourceUrl: 'u',
+          readAt: now,
+          price: 15722,
+          mileage: 5000,
+          imageUrl: 'https://img/other.jpg',
+        ),
+        VehicleListing(
+          id: 'z',
+          title: '2019 INFINITI QX80',
+          sourceUrl: 'u',
+          readAt: now,
+          price: 18422,
+          imageUrl: 'https://img/qx.jpg',
+        ),
+      ]);
+      expect(filled, 1);
+      expect(store.all.map((l) => l.id), ['a', 'b']);
+      expect(store.all.first.imageUrl, 'https://img/sorento.jpg');
+      expect(store.all[1].imageUrl, 'https://img/leaf.jpg');
+    });
   });
 }

@@ -45,6 +45,12 @@ void main() {
       }
     });
 
+    test('every site name is a generic keyword, so the model cannot search for it', () {
+      for (final site in CuratedSites.all) {
+        expect(SearchQuery.genericKeywords, contains(site.name.toLowerCase()), reason: site.name);
+      }
+    });
+
     test('keywords are encoded', () {
       expect(CuratedSites.echopark.search(keywords: 'a&b c'), endsWith('search=a%26b+c'));
     });

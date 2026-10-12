@@ -1,9 +1,11 @@
 import 'listing.dart';
 import 'search_query.dart';
 
-/// Listings read during this session (Q45: session scope; saving across
-/// conversations is a separate, explicit action). `find_vehicles` searches
-/// here. Listings carry `readAt` so staleness can be shown later (DD-R15).
+/// Listings read during this session. Session scope is deliberate: a listing
+/// is a snapshot of a page, so keeping it across conversations is a separate,
+/// explicit action the person takes, not something the store does on its
+/// own. `find_vehicles` searches here. Listings carry `readAt` so a card can
+/// say how old its figures are once a listing outlives the page read.
 class ListingStore {
   final List<VehicleListing> _all = [];
 
@@ -23,6 +25,39 @@ class ListingStore {
     for (final l in listings) {
       if (_keys.add(l.dedupeKey)) _all.add(l);
     }
+  }
+
+  /// Fills in images for stored listings that have none, from [fresh]
+  /// listings read off the same page later (after the person scrolled it and
+  /// the site's lazy images arrived). Matched by [VehicleListing.dedupeKey];
+  /// nothing else about a stored listing changes. Returns how many were
+  /// filled. The person's own browsing is the source of images; the app
+  /// never scrolls a page to get them.
+  int mergeImages(Iterable<VehicleListing> fresh) {
+    var filled = 0;
+    for (final f in fresh) {
+      final url = f.imageUrl;
+      if (url == null) continue;
+      final i = _all.indexWhere((l) => l.imageUrl == null && l.dedupeKey == f.dedupeKey);
+      if (i < 0) continue;
+      final l = _all[i];
+      _all[i] = VehicleListing(
+        id: l.id,
+        title: l.title,
+        sourceUrl: l.sourceUrl,
+        readAt: l.readAt,
+        price: l.price,
+        mileage: l.mileage,
+        year: l.year,
+        make: l.make,
+        model: l.model,
+        bodyStyle: l.bodyStyle,
+        imageUrl: url,
+        detailUrl: l.detailUrl ?? f.detailUrl,
+      );
+      filled++;
+    }
+    return filled;
   }
 
   /// Forgets every listing.

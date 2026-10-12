@@ -3,9 +3,11 @@ import 'package:advisor_core/advisor_core.dart';
 import 'chat_state.dart';
 
 /// The prompts the app itself places in the conversation, so the screen
-/// responds before the model has said a word. Each is
-/// validated through the same [PresentRequest] path the model uses, so a
-/// starter can never show something the registry would refuse.
+/// responds before the model has said a word. Each is validated through the
+/// same [PresentRequest] path the model uses (see [validatedComponent]), so
+/// a starter can never show something the registry would refuse. The caller
+/// supplies the [ComponentIds] so the ids stay in step with everything else
+/// it presents.
 abstract final class Starters {
   /// The opening choice, by option id: the shopping mode it sets and the
   /// sentence sent to the model on the person's behalf.
@@ -24,7 +26,7 @@ abstract final class Starters {
   static const kindPrefix = 'kind-';
 
   /// The shopping-mode question. A returning profile gets a "pick up" wording.
-  static ShownComponent openingPrompt(BuyerProfile profile) => _validated({
+  static ShownComponent openingPrompt(BuyerProfile profile, ComponentIds ids) => _validated(ids, {
     'component': 'choice',
     'props': {
       'question': profile.mode == null
@@ -40,13 +42,14 @@ abstract final class Starters {
   })!;
 
   /// The app-owned live filters card.
-  static ShownComponent filtersCard() => _validated({'component': 'search_filters'})!;
+  static ShownComponent filtersCard(ComponentIds ids) =>
+      _validated(ids, {'component': 'search_filters'})!;
 
   /// What joins the conversation under the filters card for each mode.
   /// Dreaming clears the price ceiling and says so with a choice; practical
   /// and buying get the numbers form; browsing gets nothing extra.
-  static ShownComponent? forMode(ShoppingMode mode) => switch (mode) {
-    ShoppingMode.dreaming => _validated({
+  static ShownComponent? forMode(ShoppingMode mode, ComponentIds ids) => switch (mode) {
+    ShoppingMode.dreaming => _validated(ids, {
       'component': 'choice',
       'props': {
         'question': 'No price ceiling for a dream car. Start with a kind, or name it below?',
@@ -58,7 +61,7 @@ abstract final class Starters {
         ],
       },
     }),
-    ShoppingMode.practical || ShoppingMode.buying => _validated({
+    ShoppingMode.practical || ShoppingMode.buying => _validated(ids, {
       'component': 'input_form',
       'props': {
         'title': 'The numbers that matter most',
@@ -77,10 +80,6 @@ abstract final class Starters {
     ShoppingMode.browsing => null,
   };
 
-  static ShownComponent? _validated(Map<String, Object?> args) {
-    final v = PresentRequest.validate(args, resultTool: null);
-    assert(v.request != null, 'starter rejected by the registry: ${v.errors}');
-    final request = v.request;
-    return request == null ? null : ShownComponent(request: request);
-  }
+  static ShownComponent? _validated(ComponentIds ids, Map<String, Object?> args) =>
+      validatedComponent(args, id: ids.next());
 }

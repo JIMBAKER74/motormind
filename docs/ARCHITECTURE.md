@@ -1,6 +1,8 @@
 # Architecture
 
-**Status:** revised 2026-10-09. The pure-Dart layer (sections 5 and 6) and the Flutter app
+**Status:** revised 2026-10-12. This describes an exploratory prototype built for
+demonstration; it is a record of what exists and why, not the design of a product.
+Revised 2026-10-09. The pure-Dart layer (sections 5 and 6) and the Flutter app
 exist with passing tests: the conversation and its cards, the stage, the live search and
 filters card, the web pane with reading recipes and captures, the model catalog, and the
 display decision table with an optional second model session (ADR 0008). Sections marked
@@ -261,6 +263,29 @@ component, and never affect ranking.
   project and are not secrets.
 - *Plan:* a debug network audit that logs every outbound host; a test fails on an
   unexpected host.
+
+## 13b. Trust boundaries (security review, 2026-10-10)
+
+- **A page is untrusted input.** Text read from a listing site reaches the model as content
+  to summarize, under a fixed prompt rule never to follow instructions found in it. Numbers
+  read from a page never authorize a finance-tool argument: the input guard's sources are
+  what the person typed, the profile and earlier finance results only; the narration guard
+  may additionally quote the parsed listing fields (price, mileage, year, facts), never the
+  page's free text.
+- **The model cannot steer the pane off the web.** `BrowserService.open` refuses anything
+  that is not an absolute http(s) address (a programmatic load bypasses the pane's
+  navigation delegate on Android, so the check lives in the service), and a model-supplied
+  `read_page` URL must be on a curated site; the person can browse anywhere by hand.
+- **Nothing from disk is executed.** Recipe overrides are JSON; their regexes are refused
+  when long or when they nest quantifiers (the backtracking shape), and an override must
+  name a curated site. Capture and recipe file names are built from a curated site id and a
+  digits-only timestamp.
+- **Secrets.** The Hugging Face token lives in secure storage, is never logged, and is sent
+  only to the model host over https. The Firebase config files identify the project (client
+  keys with no server privileges). No other credential exists in the tree or its history.
+- **Android.** Backups are off (`allowBackup="false"`): captured pages and the token stay on
+  the device. Release signing reads an untracked `key.properties`; without it a release
+  build falls back to the debug key and must not be distributed.
 
 ## 14. Context budget (learned 2026-10-05)
 

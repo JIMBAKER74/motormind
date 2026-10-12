@@ -10,8 +10,10 @@ import 'listing_parse.dart';
 ///   a title line ("Toyota RAV4 XLE"), then a "Price" label and the price
 ///   (EchoPark-style cards).
 ///
-/// Deliberately generic (Q31: user-initiated, one page at a time). A curated
-/// site may add a recipe that does better; this is the floor every page gets.
+/// Deliberately generic: reading is something the person starts, one page at
+/// a time, never a crawl, so the extractor needs no knowledge of any site. A
+/// curated site may add a recipe that does better; this is the floor every
+/// page gets.
 class ListingExtractor {
   /// Creates an extractor that stops after [maxListings] listings.
   const ListingExtractor({this.maxListings = defaultMaxListings});

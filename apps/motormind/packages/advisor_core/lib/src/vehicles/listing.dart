@@ -1,6 +1,8 @@
+import '../parse.dart';
+
 /// A vehicle listing as read from a page. Facts only, with the page it came
 /// from, so the person can open the source and so staleness can be shown.
-class VehicleListing {
+final class VehicleListing {
   /// Creates a listing; [readAt] is when its page was read.
   const VehicleListing({
     required this.id,
@@ -59,8 +61,28 @@ class VehicleListing {
   /// between reads, so they are left out.
   String get dedupeKey => '$title|$price|$mileage';
 
+  /// Restores a listing written by [toJson], so a captured page read or a
+  /// saved list can be shown again. `id`, `title`, `sourceUrl` and `readAt`
+  /// are required (a listing without them has no identity and no source);
+  /// the optional fields are null when absent, null or of the wrong type,
+  /// the same tolerance a page read gets.
+  factory VehicleListing.fromJson(Map<String, Object?> json) => VehicleListing(
+    id: json['id'] as String,
+    title: json['title'] as String,
+    sourceUrl: json['sourceUrl'] as String,
+    readAt: DateTime.parse(json['readAt'] as String),
+    price: parseTolerantNumber(json['price']),
+    mileage: parseTolerantNumber(json['mileage'])?.round(),
+    year: parseTolerantNumber(json['year'])?.round(),
+    make: json['make'] as String?,
+    model: json['model'] as String?,
+    bodyStyle: json['bodyStyle'] as String?,
+    imageUrl: json['imageUrl'] as String?,
+    detailUrl: json['detailUrl'] as String?,
+  );
+
   /// Full form for the UI and the store; see [toModelJson] for the model's
-  /// view.
+  /// view. Round-trips through [VehicleListing.fromJson].
   Map<String, Object?> toJson() => {
     'id': id,
     'title': title,
@@ -88,7 +110,7 @@ class VehicleListing {
 
 /// What `read_page` returns: cleaned text plus whatever listings the page
 /// yielded. The text is capped before it reaches the model.
-class PageExtract {
+final class PageExtract {
   /// Creates an extract for the page at [url].
   const PageExtract({
     required this.url,

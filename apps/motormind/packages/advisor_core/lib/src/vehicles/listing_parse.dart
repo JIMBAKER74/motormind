@@ -4,6 +4,8 @@
 /// like, so each lives here once and a fix lands in all three.
 library;
 
+import '../parse.dart';
+
 /// Listings one page read may yield, for every reader. Results pages show
 /// 20 to 40 cards, so this keeps a whole page while bounding what the store
 /// and the model are handed from a page that scrolls forever.
@@ -138,17 +140,8 @@ final RegExp _milesBare = RegExp(r'(\d{1,3}(?:,\d{3})+|\d{1,6}(?:\.\d)?[kK]?)\b'
 /// is for free page text, where a bare number is a stock number or a year.
 int? tryParseMiles(String text, {bool requireUnit = false}) {
   final withUnit = _milesWithUnit.firstMatch(text);
-  if (withUnit != null) return _miles(withUnit.group(1)!);
+  if (withUnit != null) return parseTolerantNumber(withUnit.group(1))?.round();
   if (requireUnit) return null;
   final bare = _milesBare.firstMatch(text);
-  return bare == null ? null : _miles(bare.group(1)!);
-}
-
-int? _miles(String figure) {
-  final v = figure.replaceAll(',', '').toLowerCase();
-  if (v.endsWith('k')) {
-    final n = double.tryParse(v.substring(0, v.length - 1));
-    return n == null ? null : (n * 1000).round();
-  }
-  return int.tryParse(v);
+  return bare == null ? null : parseTolerantNumber(bare.group(1))?.round();
 }

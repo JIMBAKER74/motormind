@@ -7,9 +7,11 @@ import '../../services/advisor_model_service.dart';
 import '../../services/log.dart';
 import '../advisor/advisor_surface.dart';
 import '../advisor/stage.dart';
+import '../browser/browser_service.dart';
 import '../listings/listing_signals.dart';
 import '../models/model_catalog.dart';
 import '../search/search_service.dart';
+import 'cards/formatting.dart';
 import 'chat_state.dart';
 import 'chat_strings.dart';
 import 'edge_ai_chat_driver.dart';
@@ -31,12 +33,14 @@ final turnIdleLimitProvider = Provider<Duration?>((ref) => const Duration(second
 
 final chatServiceProvider = NotifierProvider<ChatService, ChatState>(ChatService.new);
 
-class ChatService extends Notifier<ChatState> {
+final class ChatService extends Notifier<ChatState> {
   TurnPipeline? _pipeline;
   ChatDriver? _driver;
 
   /// The turn in flight, so an interrupt can wait for it to wind down.
   Future<void>? _turn;
+
+  ComponentIds get _componentIds => ref.read(componentIdsProvider);
 
   @override
   ChatState build() {
@@ -78,7 +82,9 @@ class ChatService extends Notifier<ChatState> {
         driver = await factory(instruction);
       } else {
         final models = ref.read(advisorModelServiceProvider.notifier);
-        final model = models.loadedModel;
+        // A tap on "Ask Motormind" while the model is still loading waits
+        // for it rather than failing; the panel shows the load meanwhile.
+        final model = await models.whenLoaded();
         final activeId = ref.read(advisorModelServiceProvider).value?.activeId;
         final spec = activeId == null ? null : ModelCatalog.byId(activeId);
         if (model == null || spec == null) {
@@ -93,9 +99,16 @@ class ChatService extends Notifier<ChatState> {
       }
       await _driver?.close();
       _driver = driver;
-      _pipeline = TurnPipeline(driver: driver, profile: profile, external: ExternalTools(ref).call);
+      _pipeline = TurnPipeline(
+        driver: driver,
+        profile: profile,
+        external: ref.read(externalToolsProvider).call,
+      );
       // A fresh conversation: every flag from the previous one is dropped.
-      state = ChatState(ready: true, timeline: [ComponentEntry(Starters.openingPrompt(profile))]);
+      state = ChatState(
+        ready: true,
+        timeline: [ComponentEntry(Starters.openingPrompt(profile, _componentIds))],
+      );
     } on Exception catch (e) {
       logDev('start failed: $e');
       state = state.copyWith(busy: false, error: ChatStrings.startFailed);
@@ -110,9 +123,17 @@ class ChatService extends Notifier<ChatState> {
 
   /// [filtersCardComing] is set by [choose] when the filters card is about to
   /// join the conversation, so the first turn already knows it is on screen.
-  Future<void> send(String text, {bool filtersCardComing = false}) {
-    final pipeline = _pipeline;
-    if (pipeline == null || state.busy || text.trim().isEmpty) return Future.value();
+  Future<void> send(String text, {bool filtersCardComing = false}) async {
+    if (text.trim().isEmpty) return;
+    // Motormind is always on: a message typed before the conversation has
+    // started (the model still loading) starts it and then goes through,
+    // instead of meeting a disabled box (the owner's note, 2026-10-12).
+    if (_pipeline == null) {
+      if (!state.busy) await start();
+      if (_pipeline == null) return; // start() said why in state.error
+    }
+    final pipeline = _pipeline!;
+    if (state.busy) return;
     return _turn = _runTurn(pipeline, text, filtersCardComing: filtersCardComing);
   }
 
@@ -136,7 +157,11 @@ class ChatService extends Notifier<ChatState> {
         );
     final siteName = CuratedSites.nameFor(search.siteId);
     final signals = ref.read(listingSignalsProvider.notifier).summary(_listingsOnStage());
-    final signalContext = signals == null ? '' : '\n[Listings: $signals.]';
+    final noticed = _signals.isEmpty ? '' : ' The person ${_signals.join('; ')}.';
+    _signals.clear();
+    final signalContext = signals == null && noticed.isEmpty
+        ? ''
+        : '\n[Listings: ${signals ?? 'none viewed'}.$noticed]';
     final searchContext = !hasFiltersCard
         ? ''
         : search.query.isEmpty
@@ -197,7 +222,11 @@ class ChatService extends Notifier<ChatState> {
                 !request.component.isInteraction &&
                 surface != SurfaceState.fullscreen &&
                 request.surface != SurfaceState.fullscreen;
-            final shown = ShownComponent(request: request, result: result);
+            final shown = ShownComponent(
+              id: _componentIds.next(),
+              request: request,
+              result: result,
+            );
             if (toStage) {
               ref.read(stageProvider.notifier).show(shown);
             } else {
@@ -265,13 +294,10 @@ class ChatService extends Notifier<ChatState> {
     }
   }
 
-  /// The listings currently on the stage, as the maps the cards render from.
-  List<Map<String, Object?>> _listingsOnStage() => [
+  /// The listings currently on the stage.
+  List<VehicleListing> _listingsOnStage() => [
     for (final c in ref.read(stageProvider).cards)
-      if (c.request.component.id == 'vehicle_card')
-        ...((c.result?.result?['listings'] as List?) ?? const []).map(
-          (l) => (l as Map).cast<String, Object?>(),
-        ),
+      if (c.request.component.id == 'vehicle_card') ...listingsOf(c.result),
   ];
 
   String _silentTurnText(List<ToolResult> results) {
@@ -299,12 +325,94 @@ class ChatService extends Notifier<ChatState> {
   /// Dismisses the sales-language banner.
   void clearPolicyFlags() => state = state.copyWith(policyFlags: const []);
 
+  /// The listing Motormind asked about after repeated taps; the answer to
+  /// [ChatStrings.tappingQuestion] applies to it.
+  VehicleListing? _tappedListing;
+
+  /// Signals the app noticed since the last turn, told to the model with
+  /// the next message so it can respond to what the person did, not only
+  /// to what they typed (the design notes' per-turn context record).
+  final List<String> _signals = [];
+
+  /// Option ids of the choice Motormind offers after repeated taps.
+  static const attentionPrefix = 'attention-';
+
+  /// Motormind noticed the person tapping a listing again and again and asks what
+  /// would help, with the things it can do as answers. Nothing is sent to
+  /// the model: the question is the app's, at once, and the answer reaches
+  /// the model as a signal with the next turn.
+  void noticeTapping(VehicleListing l) {
+    if (!state.ready) return;
+    final pending = state.timeline.any(
+      (e) =>
+          e is ComponentEntry &&
+          !e.shown.answered &&
+          e.shown.request.props['question'] == ChatStrings.tappingQuestion,
+    );
+    if (pending) return;
+    _tappedListing = l;
+    final shown = validatedComponent({
+      'component': 'choice',
+      'props': {
+        'question': ChatStrings.tappingQuestion,
+        'options': [
+          {'id': '${attentionPrefix}photo', 'label': ChatStrings.biggerPhoto},
+          {'id': '${attentionPrefix}site', 'label': ChatStrings.openOnSite},
+          {'id': '${attentionPrefix}no', 'label': ChatStrings.nothingThanks},
+        ],
+      },
+    }, id: _componentIds.next());
+    if (shown == null) return;
+    _signals.add('tapped the same listing ${RepeatedTaps.threshold} times (${l.title})');
+    state = state.copyWith(timeline: [...state.timeline, ComponentEntry(shown)]);
+  }
+
+  /// Answers to [noticeTapping]'s question: done by the app at once, and
+  /// remembered for the model. Returns true when [id] was one of them.
+  bool _answerAttention(String id, ShownComponent? source) {
+    if (!id.startsWith(attentionPrefix)) return false;
+    _markAnswered(source);
+    final l = _tappedListing;
+    final want = id.substring(attentionPrefix.length);
+    _signals.add('asked for: $want');
+    if (l == null) return true;
+    final key = ListingSignalsNotifier.keyFor(l);
+    switch (want) {
+      case 'photo':
+        ref.read(bigPhotoProvider.notifier).show(key);
+      case 'site':
+        final url = l.detailUrl ?? l.sourceUrl;
+        if (BrowserService.isWebUrl(url)) {
+          unawaited(ref.read(browserProvider.notifier).open(url));
+          ref.read(stageProvider.notifier).showWeb();
+        }
+      default:
+        break;
+    }
+    return true;
+  }
+
+  void _markAnswered(ShownComponent? source) {
+    if (source == null) return;
+    state = state.copyWith(
+      timeline: [
+        for (final e in state.timeline)
+          if (e is ComponentEntry && e.shown.id == source.id)
+            ComponentEntry(source.copyWith(answered: true))
+          else
+            e,
+      ],
+    );
+  }
+
   /// Answers a choice prompt or a form. [supplement] is text the person typed
   /// alongside the selection: it is sent with the selection. Opening-mode
   /// choices set the mode locally and add the filters card and a starter to
   /// the conversation before the model answers. [source] is the card
   /// answered; it collapses to its question but stays in the transcript.
   Future<void> choose(String id, String label, {String? supplement, ShownComponent? source}) async {
+    // The app's own questions are answered by the app, turn or no turn.
+    if (_answerAttention(id, source)) return;
     // While a turn runs, a tap would mark the card answered and then be
     // dropped by send(); refusing it up front keeps the chips live.
     if (_pipeline == null || state.busy) return;
@@ -323,12 +431,11 @@ class ChatService extends Notifier<ChatState> {
     final opening = Starters.openingChoices[id];
     if (opening != null) {
       final (mode, sentence) = opening;
-      _pipeline?.profile = (_pipeline?.profile ?? const BuyerProfile()).applyUpdate({
-        'shopping_mode': mode.name,
-      });
+      _pipeline?.setShoppingMode(mode);
       // The live filters join the conversation the moment a mode is chosen, so
-      // the screen responds before the model has said a word (Q43, DD
-      // principle 3). The card is app-owned: it tracks the search state.
+      // the screen responds before the model has said a word: the person
+      // should never wait on generation for something the app already knows.
+      // The card is app-owned: it tracks the search state.
       // send() is synchronous up to its first await, so the card lands after
       // the sentence and before the reply bubble fills in.
       final turn = send(withExtra(sentence), filtersCardComing: true);
@@ -338,10 +445,10 @@ class ChatService extends Notifier<ChatState> {
         state = state.copyWith(
           timeline: [
             ...state.timeline,
-            ComponentEntry(Starters.filtersCard()),
+            ComponentEntry(Starters.filtersCard(_componentIds)),
             // Mode starters: the app says what it did and asks,
             // so the person can correct it instead of living with a default.
-            if (Starters.forMode(mode) case final starter?) ComponentEntry(starter),
+            if (Starters.forMode(mode, _componentIds) case final starter?) ComponentEntry(starter),
             const MessageEntry(
               ChatMessage(role: MessageRole.system, text: Starters.negotiableNote),
             ),
