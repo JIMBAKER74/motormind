@@ -82,10 +82,14 @@ final class BrowserService extends Notifier<BrowserState> {
 
   /// The paced scroll after the app opens a results page: a screen at a time
   /// with a pause, so lazily rendered cards and images exist before the read.
-  /// Six screens covers a first results page on every curated site.
+  /// Six screens covers a first results page on every curated site. The
+  /// pause is a person's, not a script's: at 450 ms the owner watched the
+  /// page scroll past images that had not arrived yet (Galaxy Z Fold 4,
+  /// 2026-10-12), and a site serving images from a slow edge is within its
+  /// rights to expect a reader who lingers.
   static const _scrollSteps = 6;
-  static const _scrollPause = Duration(milliseconds: 450);
-  static const _scrollReturnPause = Duration(milliseconds: 400);
+  static const _scrollPause = Duration(milliseconds: 1200);
+  static const _scrollReturnPause = Duration(milliseconds: 600);
 
   /// Only the title and the first part of the text decide whether a page is
   /// a bot check: the markers sit at the top of those pages.

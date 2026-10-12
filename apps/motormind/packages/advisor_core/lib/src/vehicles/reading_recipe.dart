@@ -475,10 +475,14 @@ class RecipeReader {
       final priceRaw = recipe.fields['price']?.read(card);
       final mileageRaw = recipe.fields['mileage']?.read(card);
       final yearRaw = recipe.fields['year']?.read(card);
-      final heading = parseTitle(title);
+      // Some sites print the year apart from the name ("Kia Sorento SX" with
+      // "2021" in a details row); a `year` field puts it back in front so the
+      // heading parser and the tile both see "2021 Kia Sorento SX".
+      final fullTitle = parseTitle(title) == null && yearRaw != null ? '$yearRaw $title' : title;
+      final heading = parseTitle(fullTitle);
       final listing = VehicleListing(
         id: 'v${out.length + 1}',
-        title: title,
+        title: fullTitle,
         sourceUrl: sourceUrl,
         readAt: now,
         price: priceRaw == null ? null : tryParsePrice(priceRaw),

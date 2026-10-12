@@ -78,6 +78,37 @@ void main() {
     });
   });
 
+  group('captured pages', () {
+    // The capture came from the app on a phone (ADR 0007: the person browses,
+    // taps Capture, the file leaves the device as a fixture). The recipe was
+    // written from tool/recipe_structure.dart's summary of it, so this test
+    // is the self-check's verdict on a real page, and the reason the asset
+    // says "verified".
+    test('EchoPark v2 reads the captured SUV results page', () {
+      final page = _read('test/fixtures/echopark_results_captured.html');
+      final echopark = _recipe(_read(_fixturePath('echopark')));
+      final r = const RecipeReader().read(
+        page,
+        echopark,
+        sourceUrl: 'https://www.echopark.com/used-cars/suv?radius=100',
+        now: now,
+      );
+      expect(r.check.ok, isTrue, reason: r.check.toString());
+      expect(r.listings.length, greaterThanOrEqualTo(20));
+      expect(r.check.pageTotal, 407);
+      expect(r.listings.every((l) => l.price != null), isTrue);
+      // Captured before scrolling: only the first screen's lazy images had
+      // loaded. The app scrolls before it reads; a capture is what it is.
+      expect(r.listings.where((l) => l.imageUrl != null).length, greaterThanOrEqualTo(3));
+      final sorento = r.listings.firstWhere((l) => l.title.contains('Kia Sorento'));
+      expect(sorento.year, 2021);
+      expect(sorento.make, 'Kia');
+      expect(sorento.mileage, isNotNull);
+      expect(sorento.detailUrl, startsWith('https://www.echopark.com/car/'));
+      expect(sorento.imageUrl, startsWith('https://'));
+    });
+  });
+
   group('reading cards', () {
     test('a recipe reads cards, prices, mileage, images and links from HTML', () {
       final r = read(html);

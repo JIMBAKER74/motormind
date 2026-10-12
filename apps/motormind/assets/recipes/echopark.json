@@ -1,20 +1,41 @@
 {
   "siteId": "echopark",
-  "version": 1,
-  "status": "unverified",
-  "note": "Guessed from the rendered text of EchoPark's /used-cars page (year, mileage, stock, title, 'Price', amount). The card selector needs a captured page to confirm; until then the text strategies read EchoPark.",
-  "card": "[data-testid*='vehicle-card'], [class*='VehicleCard'], [class*='vehicle-card'], article",
+  "version": 2,
+  "status": "verified",
+  "note": "Version 2, 2026-10-12, from a page captured on the owner's phone (test/fixtures/echopark_results_captured.html) and the structure summary that tool/recipe_structure.dart printed for it: the card family is div.vehicleCardPaper (one /car link and one image each), the name is an h2, the price carries a data-testid, the page total sits in data-testid=inventoryCount beside the h1. Version 1 was guessed from rendered text and matched 66 elements with no title. Images are lazy (a v-lazy carousel per card): a page captured before scrolling has them on the first screen only, so the image fraction is a floor, not a verdict; the app's paced scroll is what makes the rest exist before a read. The year is a span of its own in the details row, in front of the mileage; the name heading has no year.",
+  "card": "div.vehicleCardPaper",
   "fields": {
-    "title": {"selector": "h2, h3, [class*='title']"},
-    "price": {"selector": "[class*='price'], [data-testid*='price']"},
-    "mileage": {"selector": "[class*='mileage'], [class*='miles']"},
-    "image": {"selector": "img", "attrs": ["src", "data-src", "srcset"]},
-    "link": {"selector": "a[href*='/used-cars/'], a[href*='/vehicle/']", "attrs": ["href"]}
+    "title": {
+      "selector": "h2.vehicleInfoName"
+    },
+    "year": {
+      "selector": ".vehicleInfoDetails span"
+    },
+    "price": {
+      "selector": "[data-testid='vehicle-price']"
+    },
+    "mileage": {
+      "selector": ".vehicleInfoDetailsMileage"
+    },
+    "image": {
+      "selector": ".vehicleImageCarousel img",
+      "attrs": [
+        "src",
+        "data-src",
+        "srcset"
+      ]
+    },
+    "link": {
+      "selector": "a[href^='/car/']",
+      "attrs": [
+        "href"
+      ]
+    }
   },
   "selfCheck": {
     "minCards": 3,
     "minPriceFraction": 0.7,
-    "minImageFraction": 0.0,
-    "totalPattern": "([\\d,]+)\\s+used cars at EchoPark"
+    "minImageFraction": 0.1,
+    "totalPattern": "([\\d,]+)\\s*Used\\b[^\\n]{0,40}?for sale at EchoPark"
   }
 }
