@@ -122,6 +122,7 @@ Future<PageExtract> fakeReader({String? url}) async {
         mileage: 45000,
         year: 2021,
         make: 'Honda',
+        imageUrl: 'https://img.example.com/crv.jpg',
       ),
       VehicleListing(
         id: 'f2',
@@ -151,6 +152,11 @@ typedef Started = ({ScriptedDriver driver, ProviderContainer container});
 
 /// Pumps the app at phone size, opens Motormind (docked, or fullscreen),
 /// and starts the conversation with the scripted driver.
+/// True when the web pane is parked (one pixel high) behind the cards: it
+/// stays mounted so the page the person browsed is never reloaded.
+bool _paneParked(WidgetTester tester) =>
+    tester.getSize(find.byKey(const Key('web-pane-slot'))).height <= 1;
+
 Future<Started> _start(WidgetTester tester, {bool fullscreen = true, Duration? idleLimit}) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
@@ -266,7 +272,7 @@ void main() {
       // Cards first: the site's first page was read at launch and its
       // listings are on the stage before anything was asked (DD-Q21).
       expect(find.byKey(const Key('listing-2021 Honda CR-V EX|27995')), findsOneWidget);
-      expect(find.byKey(const Key('browser-pane')), findsNothing);
+      expect(_paneParked(tester), isTrue);
       await _chooseMode(tester, s, 'practical');
       // The live filters and the numbers form join the conversation (checked
       // on the timeline: the docked list is lazy and short once the stage
@@ -293,7 +299,7 @@ void main() {
         find.descendant(of: stage, matching: find.byKey(const Key('card-payment_summary'))),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('browser-pane')), findsNothing);
+      expect(_paneParked(tester), isTrue);
       expect(
         find.descendant(of: chatList, matching: find.byKey(const Key('card-payment_summary'))),
         findsNothing,
@@ -422,6 +428,47 @@ void main() {
   });
 
   group('cards stage', () {
+    testWidgets('three quick taps on one tile make Motormind ask, and a bigger photo follows', (
+      tester,
+    ) async {
+      final s = await _start(tester, fullscreen: false);
+      await _chooseMode(tester, s, 'browsing');
+      final tile = find.byKey(const Key('listing-2021 Honda CR-V EX|27995'));
+      expect(tile, findsOneWidget);
+      // On the title, not the tile's center: an open tile has chips there.
+      final title = find.descendant(of: tile, matching: find.text('2021 Honda CR-V EX'));
+      for (var i = 0; i < RepeatedTaps.threshold; i++) {
+        await tester.tap(title);
+        await tester.pumpAndSettle();
+      }
+      // The app asks at once; no model turn is involved. The docked list is
+      // lazy, so the question is checked on the timeline and the chip is
+      // scrolled into view.
+      expect(
+        s.container
+            .read(chatServiceProvider)
+            .timeline
+            .whereType<ComponentEntry>()
+            .any((e) => e.shown.request.props['question'] == ChatStrings.tappingQuestion),
+        isTrue,
+      );
+      expect(s.driver.prompts.where((p) => p.contains('tapped the same listing')), isEmpty);
+      final photoChip = find.byKey(const Key('choice-${ChatService.attentionPrefix}photo'));
+      await tester.scrollUntilVisible(
+        photoChip,
+        80,
+        scrollable: find
+            .descendant(of: find.byKey(const Key('chat-list')), matching: find.byType(Scrollable))
+            .first,
+      );
+      await tester.tap(photoChip);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('big-photo-2021 Honda CR-V EX|27995')), findsOneWidget);
+      // The next turn tells the model what happened.
+      await _turn(tester, s, () => s.container.read(chatServiceProvider.notifier).send('nice'));
+      expect(s.driver.prompts.last, contains('asked for: photo'));
+    });
+
     testWidgets('a search brings the Cards stage forward with attributed, tappable tiles', (
       tester,
     ) async {
@@ -436,7 +483,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('surface-bubble'))); // -> docked
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('browser-pane')), findsNothing);
+      expect(_paneParked(tester), isTrue);
       // Every tile names its source and its age.
       expect(find.textContaining('${CuratedSites.nameFor('echopark')} · '), findsNWidgets(2));
       // Tapping a tile opens its detail in place and marks it viewed.

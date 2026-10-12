@@ -7,6 +7,7 @@ import '../../services/advisor_model_service.dart';
 import '../../services/log.dart';
 import '../advisor/advisor_surface.dart';
 import '../advisor/stage.dart';
+import '../browser/browser_service.dart';
 import '../listings/listing_signals.dart';
 import '../models/model_catalog.dart';
 import '../search/search_service.dart';
@@ -122,9 +123,17 @@ final class ChatService extends Notifier<ChatState> {
 
   /// [filtersCardComing] is set by [choose] when the filters card is about to
   /// join the conversation, so the first turn already knows it is on screen.
-  Future<void> send(String text, {bool filtersCardComing = false}) {
-    final pipeline = _pipeline;
-    if (pipeline == null || state.busy || text.trim().isEmpty) return Future.value();
+  Future<void> send(String text, {bool filtersCardComing = false}) async {
+    if (text.trim().isEmpty) return;
+    // Motormind is always on: a message typed before the conversation has
+    // started (the model still loading) starts it and then goes through,
+    // instead of meeting a disabled box (the owner's note, 2026-10-12).
+    if (_pipeline == null) {
+      if (!state.busy) await start();
+      if (_pipeline == null) return; // start() said why in state.error
+    }
+    final pipeline = _pipeline!;
+    if (state.busy) return;
     return _turn = _runTurn(pipeline, text, filtersCardComing: filtersCardComing);
   }
 
@@ -148,7 +157,11 @@ final class ChatService extends Notifier<ChatState> {
         );
     final siteName = CuratedSites.nameFor(search.siteId);
     final signals = ref.read(listingSignalsProvider.notifier).summary(_listingsOnStage());
-    final signalContext = signals == null ? '' : '\n[Listings: $signals.]';
+    final noticed = _signals.isEmpty ? '' : ' The person ${_signals.join('; ')}.';
+    _signals.clear();
+    final signalContext = signals == null && noticed.isEmpty
+        ? ''
+        : '\n[Listings: ${signals ?? 'none viewed'}.$noticed]';
     final searchContext = !hasFiltersCard
         ? ''
         : search.query.isEmpty
@@ -312,12 +325,94 @@ final class ChatService extends Notifier<ChatState> {
   /// Dismisses the sales-language banner.
   void clearPolicyFlags() => state = state.copyWith(policyFlags: const []);
 
+  /// The listing Motormind asked about after repeated taps; the answer to
+  /// [ChatStrings.tappingQuestion] applies to it.
+  VehicleListing? _tappedListing;
+
+  /// Signals the app noticed since the last turn, told to the model with
+  /// the next message so it can respond to what the person did, not only
+  /// to what they typed (the design notes' per-turn context record).
+  final List<String> _signals = [];
+
+  /// Option ids of the choice Motormind offers after repeated taps.
+  static const attentionPrefix = 'attention-';
+
+  /// Motormind noticed the person tapping a listing again and again and asks what
+  /// would help, with the things it can do as answers. Nothing is sent to
+  /// the model: the question is the app's, at once, and the answer reaches
+  /// the model as a signal with the next turn.
+  void noticeTapping(VehicleListing l) {
+    if (!state.ready) return;
+    final pending = state.timeline.any(
+      (e) =>
+          e is ComponentEntry &&
+          !e.shown.answered &&
+          e.shown.request.props['question'] == ChatStrings.tappingQuestion,
+    );
+    if (pending) return;
+    _tappedListing = l;
+    final shown = validatedComponent({
+      'component': 'choice',
+      'props': {
+        'question': ChatStrings.tappingQuestion,
+        'options': [
+          {'id': '${attentionPrefix}photo', 'label': ChatStrings.biggerPhoto},
+          {'id': '${attentionPrefix}site', 'label': ChatStrings.openOnSite},
+          {'id': '${attentionPrefix}no', 'label': ChatStrings.nothingThanks},
+        ],
+      },
+    }, id: _componentIds.next());
+    if (shown == null) return;
+    _signals.add('tapped the same listing ${RepeatedTaps.threshold} times (${l.title})');
+    state = state.copyWith(timeline: [...state.timeline, ComponentEntry(shown)]);
+  }
+
+  /// Answers to [noticeTapping]'s question: done by the app at once, and
+  /// remembered for the model. Returns true when [id] was one of them.
+  bool _answerAttention(String id, ShownComponent? source) {
+    if (!id.startsWith(attentionPrefix)) return false;
+    _markAnswered(source);
+    final l = _tappedListing;
+    final want = id.substring(attentionPrefix.length);
+    _signals.add('asked for: $want');
+    if (l == null) return true;
+    final key = ListingSignalsNotifier.keyFor(l);
+    switch (want) {
+      case 'photo':
+        ref.read(bigPhotoProvider.notifier).show(key);
+      case 'site':
+        final url = l.detailUrl ?? l.sourceUrl;
+        if (BrowserService.isWebUrl(url)) {
+          unawaited(ref.read(browserProvider.notifier).open(url));
+          ref.read(stageProvider.notifier).showWeb();
+        }
+      default:
+        break;
+    }
+    return true;
+  }
+
+  void _markAnswered(ShownComponent? source) {
+    if (source == null) return;
+    state = state.copyWith(
+      timeline: [
+        for (final e in state.timeline)
+          if (e is ComponentEntry && e.shown.id == source.id)
+            ComponentEntry(source.copyWith(answered: true))
+          else
+            e,
+      ],
+    );
+  }
+
   /// Answers a choice prompt or a form. [supplement] is text the person typed
   /// alongside the selection: it is sent with the selection. Opening-mode
   /// choices set the mode locally and add the filters card and a starter to
   /// the conversation before the model answers. [source] is the card
   /// answered; it collapses to its question but stays in the transcript.
   Future<void> choose(String id, String label, {String? supplement, ShownComponent? source}) async {
+    // The app's own questions are answered by the app, turn or no turn.
+    if (_answerAttention(id, source)) return;
     // While a turn runs, a tap would mark the card answered and then be
     // dropped by send(); refusing it up front keeps the chips live.
     if (_pipeline == null || state.busy) return;

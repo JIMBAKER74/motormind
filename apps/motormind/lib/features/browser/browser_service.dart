@@ -77,20 +77,6 @@ final class BrowserService extends Notifier<BrowserState> {
   static const _maxTextChars = 60000;
   static const _maxHtmlChars = 1500000;
 
-  /// A scroll step is most of a screen, so nothing between steps is missed.
-  static const _scrollScreenFraction = 0.9;
-
-  /// The paced scroll after the app opens a results page: a screen at a time
-  /// with a pause, so lazily rendered cards and images exist before the read.
-  /// Six screens covers a first results page on every curated site. The
-  /// pause is a person's, not a script's: at 450 ms the owner watched the
-  /// page scroll past images that had not arrived yet (Galaxy Z Fold 4,
-  /// 2026-10-12), and a site serving images from a slow edge is within its
-  /// rights to expect a reader who lingers.
-  static const _scrollSteps = 6;
-  static const _scrollPause = Duration(milliseconds: 1200);
-  static const _scrollReturnPause = Duration(milliseconds: 600);
-
   /// Only the title and the first part of the text decide whether a page is
   /// a bot check: the markers sit at the top of those pages.
   static const _challengeProbeLength = 400;
@@ -164,10 +150,14 @@ final class BrowserService extends Notifier<BrowserState> {
     return null;
   }
 
-  /// Reads the page: waits for the load, lets the cards render, scrolls once
-  /// if the app itself opened the page, refuses a bot check, then reads with
-  /// the site's recipe when one applies and passes its self-check, otherwise
-  /// with the generic text patterns (ADR 0007).
+  /// Reads the page: waits for the load, lets the cards render, refuses a
+  /// bot check, then reads with the site's recipe when one applies and
+  /// passes its self-check, otherwise with the generic text patterns
+  /// (ADR 0007). The app never scrolls a page: what a site renders lazily
+  /// (images, mostly) arrives as the person browses, and [rereadOpenPage]
+  /// picks it up from the page as it is. An earlier paced scroll was removed
+  /// at the owner's request (2026-10-12): it interrupted the person to fetch
+  /// what their own browsing was already producing.
   Future<PageExtract> readPage({String? url, Duration timeout = loadTimeout}) async {
     final appOpened = url != null && url != state.url;
     if (appOpened) await open(url);
@@ -175,11 +165,7 @@ final class BrowserService extends Notifier<BrowserState> {
     final c = _controller;
     if (c == null) throw StateError('The web pane is not open.');
 
-    var page = await _probeUntilRendered(c);
-    if (appOpened && !_looksLikeChallenge(page)) {
-      await _scrollToLoad(c);
-      page = await _snapshot(c);
-    }
+    final page = await _probeUntilRendered(c);
     if (_looksLikeChallenge(page)) {
       state = state.copyWith(url: page.url, title: page.title);
       throw const PageChallengeException();
@@ -267,21 +253,6 @@ final class BrowserService extends Notifier<BrowserState> {
     return r.check.ok ? r.listings : const [];
   }
 
-  /// Scrolls the way a person would, a screen at a time with a pause, then
-  /// returns to the top. Only right after the app itself opened a results
-  /// page; never on a page the person is reading.
-  Future<void> _scrollToLoad(WebViewController c) async {
-    for (var i = 0; i < _scrollSteps; i++) {
-      // runJavaScriptReturningResult returns a platform-typed Object; the
-      // string compare is the portable way to read a JS boolean.
-      final atBottom = await c.runJavaScriptReturningResult(_scrollStepJs);
-      await Future<void>.delayed(_scrollPause);
-      if (atBottom.toString() == 'true') break;
-    }
-    await c.runJavaScript('window.scrollTo({top: 0, behavior: "smooth"});');
-    await Future<void>.delayed(_scrollReturnPause);
-  }
-
   Future<_PageSnapshot> _snapshot(WebViewController c) async {
     final map = _decode(await c.runJavaScriptReturningResult(_extractJs));
     return (
@@ -314,12 +285,6 @@ final class BrowserService extends Notifier<BrowserState> {
     }
     return decoded is Map ? decoded.cast<String, Object?>() : <String, Object?>{};
   }
-
-  /// Scrolls down most of a screen and reports whether the bottom was reached
-  /// (within a few pixels, so a sub-pixel overshoot does not loop).
-  static const _scrollStepJs =
-      '(function(){window.scrollBy({top: window.innerHeight * $_scrollScreenFraction, behavior: "smooth"});'
-      'return (window.innerHeight + window.scrollY) >= document.body.scrollHeight - 10;})();';
 
   /// Visible text and rendered HTML in one call. The text comes from a clone
   /// of `body` with scripts, navigation, headers, footers and hidden elements

@@ -28,6 +28,7 @@ class ListingCards extends ConsumerStatefulWidget {
 
 class _ListingCardsState extends ConsumerState<ListingCards> {
   String? _open;
+  final _taps = RepeatedTaps();
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +37,7 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
     final listings = listingsOf(widget.shown.result);
     final signals = ref.watch(listingSignalsProvider);
     final signalsNotifier = ref.read(listingSignalsProvider.notifier);
+    final bigPhoto = ref.watch(bigPhotoProvider);
     final sites = {for (final l in listings) BrowserService.siteIdFor(l.sourceUrl) ?? 'web'};
     return CardShell(
       id: 'vehicle_card',
@@ -70,12 +72,18 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
               listing: l,
               signalKey: key,
               open: _open == key,
+              bigPhoto: bigPhoto == key,
               viewed: signals.viewed.contains(key),
               liked: signals.liked.contains(key),
               onTap: () {
                 setState(() => _open = _open == key ? null : key);
                 if (_open == key) signalsNotifier.markViewed(l);
+                // The third quick tap on one tile is a signal, not a toggle.
+                if (_taps.tap(key, DateTime.now())) {
+                  ref.read(chatServiceProvider.notifier).noticeTapping(l);
+                }
               },
+              onBigPhotoTap: () => ref.read(bigPhotoProvider.notifier).show(null),
               onLike: () => signalsNotifier.toggleLiked(l),
               onDismiss: () => signalsNotifier.dismiss(l),
               onOpenSite: () {
@@ -92,6 +100,10 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
   }
 }
 
+/// Height of the photo shown big on request; the site's images are 400 px
+/// wide, so taller is only blur.
+const double _bigPhotoHeight = 220;
+
 class _ListingTile extends StatelessWidget {
   /// Thumbnail box; the image is decoded at twice this width for sharpness.
   static const _thumbWidth = 56.0;
@@ -105,6 +117,8 @@ class _ListingTile extends StatelessWidget {
     required this.viewed,
     required this.liked,
     required this.onTap,
+    required this.bigPhoto,
+    required this.onBigPhotoTap,
     required this.onLike,
     required this.onDismiss,
     required this.onOpenSite,
@@ -117,6 +131,12 @@ class _ListingTile extends StatelessWidget {
   final bool viewed;
   final bool liked;
   final VoidCallback onTap;
+
+  /// True when the person asked for this listing's photo big.
+  final bool bigPhoto;
+
+  /// Tapping the big photo puts it away.
+  final VoidCallback onBigPhotoTap;
   final VoidCallback onLike;
   final VoidCallback onDismiss;
   final VoidCallback onOpenSite;
@@ -192,6 +212,24 @@ class _ListingTile extends StatelessWidget {
                 ),
               ],
             ),
+            if (bigPhoto && image != null && image.startsWith('https://'))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: GestureDetector(
+                  key: Key('big-photo-$signalKey'),
+                  onTap: onBigPhotoTap,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      image,
+                      fit: BoxFit.cover,
+                      height: _bigPhotoHeight,
+                      errorBuilder: (_, _, _) =>
+                          const SizedBox(height: _bigPhotoHeight, child: _Placeholder()),
+                    ),
+                  ),
+                ),
+              ),
             if (open)
               Padding(
                 padding: const EdgeInsets.only(left: _thumbWidth + _thumbGap, top: 2, bottom: 4),

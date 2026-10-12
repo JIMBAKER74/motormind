@@ -160,12 +160,21 @@ final class SearchService extends Notifier<SearchState> {
     }
     if (fresh.isEmpty) return;
     final store = ref.read(listingStoreProvider);
+    if (store.all.every((l) => l.imageUrl != null)) return;
     final filled = store.mergeImages(fresh);
     logDev('images: filled $filled from the page as browsed');
     if (filled == 0) return;
     final q = state.query;
-    _showResults(store.searchQuery(q), ref.read(browserProvider).url ?? site.home, q);
+    _showResults(
+      store.searchQuery(q, limit: stageListingLimit),
+      ref.read(browserProvider).url ?? site.home,
+      q,
+    );
   }
+
+  /// Most listings the stage card lists; a results page holds about 20 to
+  /// 30, and the card scrolls.
+  static const stageListingLimit = 60;
 
   /// Opens the site's results page for the query, reads it, and shows what
   /// matched. Safe to call repeatedly; a newer call wins.
@@ -179,7 +188,9 @@ final class SearchService extends Notifier<SearchState> {
       final extract = await ref.read(pageReaderProvider)(url: url);
       if (gen != _generation) return; // superseded
       final store = ref.read(listingStoreProvider)..addAll(extract.listings);
-      final results = store.searchQuery(q);
+      // Every listing that matched goes on the stage (the card scrolls); the
+      // model's own tool keeps its small limit for the context's sake.
+      final results = store.searchQuery(q, limit: stageListingLimit);
       state = state.copyWith(applying: false, lastCount: results.length);
       _showResults(results, extract.url, q);
     } on PageChallengeException catch (e) {

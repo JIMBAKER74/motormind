@@ -103,20 +103,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
         Expanded(
           child: !chat.ready
-              ? SingleChildScrollView(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const _ModelStatus(),
-                      FilledButton.icon(
-                        key: const Key('chat-start'),
-                        onPressed: chat.busy ? null : ref.read(chatServiceProvider.notifier).start,
-                        icon: const Icon(Icons.play_arrow),
-                        label: Text(chat.busy ? ChatStrings.starting : ChatStrings.askMotormind),
-                      ),
-                    ],
-                  ),
+              // No start button: the conversation starts itself when the
+              // model is ready, and the input below is live meanwhile.
+              ? const SingleChildScrollView(
+                  key: Key('chat-start'),
+                  padding: EdgeInsets.all(12),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [_ModelStatus()]),
                 )
               : ListView(
                   key: const Key('chat-list'),
@@ -161,7 +153,6 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                   child: TextField(
                     key: const Key('chat-input'),
                     controller: _input,
-                    enabled: chat.ready,
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
@@ -176,7 +167,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                 const SizedBox(width: 8),
                 IconButton.filled(
                   key: const Key('chat-send'),
-                  onPressed: chat.ready ? _send : null,
+                  onPressed: _send,
                   icon: const Icon(Icons.send),
                 ),
               ],

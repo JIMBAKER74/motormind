@@ -71,3 +71,46 @@ final class ListingSignalsNotifier extends Notifier<ListingSignals> {
       if (keys.contains(keyFor(l)) && l.make != null) l.make!,
   };
 }
+
+/// The listing (by signal key) whose photo the person asked to see big,
+/// after Motormind noticed them tapping it. Session-scoped; null for none.
+final bigPhotoProvider = NotifierProvider<BigPhotoNotifier, String?>(BigPhotoNotifier.new);
+
+final class BigPhotoNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void show(String? key) => state = key;
+}
+
+/// Counts quick repeated taps on one listing, the signal behind "I see you
+/// tapping that one". Three taps on the same tile inside [window] is a
+/// person repeating themselves because the first tap did not give them
+/// what they wanted; the app answers that instead of waiting for a design
+/// cycle to notice it (the owner, 2026-10-12).
+final class RepeatedTaps {
+  /// Taps within this long of each other count as one run.
+  static const window = Duration(seconds: 15);
+
+  /// Taps in a run that mean the person wants something else.
+  static const threshold = 3;
+
+  String? _key;
+  int _count = 0;
+  DateTime? _last;
+
+  /// Records a tap on [key] at [now]; true when the run reached [threshold],
+  /// after which the count starts over.
+  bool tap(String key, DateTime now) {
+    final last = _last;
+    if (key != _key || last == null || now.difference(last) > window) {
+      _key = key;
+      _count = 0;
+    }
+    _count++;
+    _last = now;
+    if (_count < threshold) return false;
+    _count = 0;
+    return true;
+  }
+}

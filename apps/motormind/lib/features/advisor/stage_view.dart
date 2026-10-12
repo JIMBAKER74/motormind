@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,124 +12,176 @@ import '../chat/result_card.dart';
 import '../search/search_service.dart';
 import 'stage.dart';
 
-/// One identity for the web pane wherever the stage puts it (full, or a
-/// strip above the cards during a read), so moving it never recreates the
-/// platform view and reloads the page.
-final GlobalKey _paneKey = GlobalKey(debugLabel: 'web-pane');
-
-/// Height of the page strip shown above the cards while the app reads a
-/// page: enough to see it move, not enough to read it.
-const double _readingStripHeight = 112;
-
 /// The web pane is injectable so widget tests do not need a platform webview.
 final webPaneBuilderProvider = Provider<Widget Function()>(
   (ref) =>
       () => const BrowserPane(),
 );
 
-/// Renders the stage: a thin mode row (Web | Cards), then either the browser
-/// pane or the focused card with the others as chips.
-class StageView extends ConsumerWidget {
+/// Height of the page strip shown above the cards while the app reads a
+/// page: enough to see it move, not enough to read it.
+const double _readingStripHeight = 112;
+
+/// Height the pane keeps while the cards have the stage. Not zero: the
+/// platform view stays alive (and so does the page the person browsed) at a
+/// size Android accepts, and nothing is reloaded when it comes back.
+const double _parkedPaneHeight = 1;
+
+/// How often, while the page is in view, the listings are checked against
+/// the page as it is, so images the person's browsing loaded reach the
+/// cards. A read of the page's HTML is well under a second on a phone.
+const Duration _imageRefreshEvery = Duration(seconds: 5);
+
+/// Renders the stage: a thin mode row (Web | Cards), the web pane, and the
+/// cards. The pane is always in the same place in the tree and only changes
+/// height (full in Web, a strip during a read, parked otherwise): moving a
+/// platform view between parents recreated it, reloaded the page, and once
+/// tripped a framework assertion on resume (2026-10-12).
+class StageView extends ConsumerStatefulWidget {
   const StageView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StageView> createState() => _StageViewState();
+}
+
+class _StageViewState extends ConsumerState<StageView> {
+  Timer? _imageRefresh;
+
+  @override
+  void dispose() {
+    _imageRefresh?.cancel();
+    super.dispose();
+  }
+
+  /// Watches the page for images while it is in view; stops otherwise.
+  void _watchImages(bool paneVisible) {
+    if (paneVisible && _imageRefresh == null) {
+      _imageRefresh = Timer.periodic(
+        _imageRefreshEvery,
+        (_) => ref.read(searchProvider.notifier).refreshImages(),
+      );
+    } else if (!paneVisible && _imageRefresh != null) {
+      _imageRefresh!.cancel();
+      _imageRefresh = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final stage = ref.watch(stageProvider);
     final search = ref.watch(searchProvider);
+    final theme = Theme.of(context);
     final hasCards = stage.cards.isNotEmpty;
-    final showingCards = stage.mode == StageMode.cards && hasCards;
-    final pane = KeyedSubtree(key: _paneKey, child: ref.watch(webPaneBuilderProvider)());
-    // The pill counts what the person sees: listings when the stage holds
-    // them, cards otherwise (interim; design notes Q77).
-    final tiles = stage.cards.fold<int>(0, (n, c) => n + listingsOf(c.result).length);
-    final cardsLabel = !hasCards ? 'Cards' : 'Cards · ${tiles > 0 ? tiles : stage.cards.length}';
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-          child: Row(
-            children: [
-              SegmentedButton<StageMode>(
-                key: const Key('stage-mode'),
-                segments: [
-                  const ButtonSegment(
-                    value: StageMode.web,
-                    icon: Icon(Icons.public, size: 16),
-                    label: Text('Web'),
-                  ),
-                  ButtonSegment(
-                    value: StageMode.cards,
-                    icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
-                    label: Text(cardsLabel),
-                    enabled: hasCards,
-                  ),
-                ],
-                selected: {showingCards ? StageMode.cards : StageMode.web},
-                onSelectionChanged: (s) {
-                  ref.read(stageProvider.notifier).setMode(s.first);
-                  // Coming back from the page: whatever the person's browsing
-                  // loaded (lazy images) is read off the page as it is.
-                  if (s.first == StageMode.cards) {
-                    ref.read(searchProvider.notifier).refreshImages();
-                  }
-                },
-                showSelectedIcon: false,
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              ),
-            ],
-          ),
-        ),
-        // While the app reads a page, the page is a short strip that can be
-        // seen moving, labeled as the read it is, and the cards keep the
-        // room (the owner's note: an unlabeled scroll looks like a bug).
-        if (search.applying && stage.mode != StageMode.web)
-          SizedBox(
-            key: const Key('reading-strip'),
-            height: _readingStripHeight,
-            child: Stack(
-              fit: StackFit.expand,
+    final webMode = stage.mode == StageMode.web || !hasCards;
+    final reading = search.applying && !webMode;
+    _watchImages(webMode || reading);
+    final pane = ref.watch(webPaneBuilderProvider)();
+    // The pill counts cards only when there is more than one to switch
+    // between (the chip strip is the switch); one card needs no number.
+    final cardsLabel = stage.cards.length > 1 ? 'Cards · ${stage.cards.length}' : 'Cards';
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+            child: Row(
               children: [
-                pane,
-                Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.85),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          ChatStrings.readingSite(search.siteName),
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
-                      ],
+                SegmentedButton<StageMode>(
+                  key: const Key('stage-mode'),
+                  segments: [
+                    const ButtonSegment(
+                      value: StageMode.web,
+                      icon: Icon(Icons.public, size: 16),
+                      label: Text('Web'),
                     ),
-                  ),
+                    ButtonSegment(
+                      value: StageMode.cards,
+                      icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
+                      label: Text(cardsLabel),
+                      enabled: hasCards,
+                    ),
+                  ],
+                  selected: {webMode ? StageMode.web : StageMode.cards},
+                  onSelectionChanged: (s) {
+                    ref.read(stageProvider.notifier).setMode(s.first);
+                    // Coming back from the page: whatever the person's
+                    // browsing loaded is read off the page as it is.
+                    if (s.first == StageMode.cards) {
+                      ref.read(searchProvider.notifier).refreshImages();
+                    }
+                  },
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 ),
               ],
             ),
           ),
-        Expanded(
-          child: showingCards
-              ? _Cards(stage: stage, focused: stage.focused!)
-              : (search.applying && stage.mode != StageMode.web)
-              ? Center(
-                  child: Text(
-                    ChatStrings.readingSite(search.siteName),
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                )
-              : pane,
-        ),
-      ],
+          // The pane: full, a labeled strip during a read, or parked.
+          SizedBox(
+            key: const Key('web-pane-slot'),
+            height: webMode
+                ? constraints.maxHeight - _modeRowHeight
+                : reading
+                ? _readingStripHeight
+                : _parkedPaneHeight,
+            child: ClipRect(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  pane,
+                  if (reading)
+                    Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Container(
+                        key: const Key('reading-strip'),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        color: theme.colorScheme.surface.withValues(alpha: 0.85),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              ChatStrings.readingSite(search.siteName),
+                              style: theme.textTheme.labelSmall,
+                            ),
+                            const SizedBox(width: 8),
+                            // The owner asked for a way to make the page big.
+                            InkWell(
+                              key: const Key('strip-expand'),
+                              onTap: () => ref.read(stageProvider.notifier).setMode(StageMode.web),
+                              child: const Icon(Icons.open_in_full, size: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (!webMode)
+            Expanded(
+              child: hasCards
+                  ? _Cards(stage: stage, focused: stage.focused!)
+                  : Center(
+                      child: Text(
+                        ChatStrings.readingSite(search.siteName),
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+            ),
+        ],
+      ),
     );
   }
+
+  /// Height of the mode row above the pane, so a full pane fills the rest.
+  static const double _modeRowHeight = 46;
 }
 
 class _Cards extends ConsumerStatefulWidget {

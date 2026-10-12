@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/advisor_model_service.dart';
 import '../chat/chat_panel.dart';
+import '../chat/chat_service.dart';
 import 'display_agent.dart';
 import 'stage.dart';
 
@@ -52,6 +55,16 @@ class AdvisorSurfaceHost extends ConsumerWidget {
     final state = ref.watch(surfaceProvider);
     // Watched from the first frame so the installed model starts loading at
     // launch, not when the panel first opens; the panel only shows the load.
+    // The conversation starts itself the moment the model is ready, so the
+    // opening question is waiting when the person looks, with nothing to tap
+    // first ("always on": the owner, 2026-10-12).
+    ref.listen(advisorModelServiceProvider, (_, models) {
+      final ready = models.value?.activeId != null;
+      final chat = ref.read(chatServiceProvider);
+      if (ready && !chat.ready && !chat.busy) {
+        unawaited(ref.read(chatServiceProvider.notifier).start());
+      }
+    });
     ref.watch(advisorModelServiceProvider);
     // The display decision picks Web or Cards for the stage; a manual flip
     // wins. Listened here because this host outlives the stage view.
