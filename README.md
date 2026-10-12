@@ -1,9 +1,13 @@
 # Motormind AI
 
-> **Status:** working demo, October 2026. On an Android emulator, Gemma 4 E2B holds a
-> conversation, calls the finance tools, reads listing pages through the in-app browser,
-> and the app composes the screen from cards, a live filters card and a display decision
-> table. Work happens on `develop`.
+> **Status: prototype, October 2026.** This is an experiment in *dynamic design* (an
+> on-device model composing the screen from the conversation) wrapped around a working
+> vehicle-cost demo. The finance engine, its guards and the disclosures are tested and
+> stable. The dynamic-design parts are at a prototype stage and their contracts are still
+> changing; see [Experimental status](#experimental-status) before reading the rest as a
+> description of a product. Gemma 4 E2B holds a conversation, calls the finance tools,
+> reads listing pages through the in-app browser, and the app composes the screen from
+> cards, a live filters card and a display decision table. Work happens on `develop`.
 > Backlog: [BACKLOG.md](BACKLOG.md). Docs: [docs/](docs/README.md).
 
 An on-device AI companion for finding and financing a personal vehicle, built in Flutter.
@@ -20,6 +24,32 @@ with or endorsed by Deloitte. The broader idea the project explores is **UI comp
 at runtime from the conversation** rather than pre-designed screens
 ([ADR 0006](docs/adr/0006-generative-ui.md)).
 
+## Experimental status
+
+The vehicle use case is the carrier; the thesis is dynamic design, and it is a prototype.
+What that means, honestly:
+
+- **Stable and tested:** the finance math (`vehicle_finance`), the narration and input
+  guards, the closed tool switch, the disclosures, the reading recipes with their
+  self-check, the captures workflow.
+- **Prototype, working:** the component registry and the `present` protocol (the model
+  can show a card; it cannot yet replace, collapse or bring forward one already on
+  screen); the display decision table; the Cards stage with attributed, tappable tiles.
+- **Prototype, built but unproven:** the display agent as a second session of the same
+  model. It is off by default, and its cost was first measured on real hardware in
+  [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md); emulator timings are not representative.
+- **Designed, not built:** the model's context contracts (a per-turn context record, an
+  active-component list, change operations instead of rebuilds, named regions, goal
+  lines). Today the model is told a once-built system instruction plus one hidden line
+  per turn about the filters and the listings. Expect these contracts, and the tool and
+  component shapes that go with them, to change.
+- **Not started:** a composition grammar, viewport and posture awareness, proposals
+  learned from what the person taps, the hosted recipe-repair service.
+
+The decisions taken so far are in [ADR 0006](docs/adr/0006-generative-ui.md) and
+[ADR 0008](docs/adr/0008-display-agent-and-cards-stage.md). The design notes and the
+experiment log live outside the repository until they stabilize.
+
 ## What it does
 
 - **Converses** about what the buyer needs, wants and can afford, in a tone the buyer
@@ -31,9 +61,9 @@ at runtime from the conversation** rather than pre-designed screens
   it: a narration guard rejects any number the model wrote that no tool returned, and an
   input guard refuses a calculation whose inputs the person never gave, so the model asks
   instead of inventing an income ([ADR 0002](docs/adr/0002-model-never-does-arithmetic.md)).
-- **Composes the screen.** The model asks for a component from a registry (payment card,
-  fullscreen breakdown, compare, question chips) and a surface (docked or fullscreen); the
-  person can override; a pin is planned.
+- **Composes the screen (prototype).** The model asks for a component from a registry
+  (payment card, fullscreen breakdown, compare, question chips) and a surface (docked or
+  fullscreen); the person can override; a pin is planned.
 - **Browses with the buyer.** The top of the screen is a web pane showing a curated listing
   site (EchoPark by default). It is the person's browser: they scroll, tap, and answer any
   verification a site shows. The assistant reads only the page they have open, pulls
@@ -41,9 +71,10 @@ at runtime from the conversation** rather than pre-designed screens
   budget and body style. Figures found on a page become labeled inputs. Reading is a
   per-site JSON recipe with a self-check; a captured page is how a broken recipe gets fixed
   ([ADR 0007](docs/adr/0007-reading-recipes-as-data.md)).
-- **Decides the layout at runtime.** Which card is on the stage, whether the filters card
-  is open, how much of the screen the page gets: a rules table decides from screen state,
-  and a second session of the same model can take the rows over
+- **Decides the layout at runtime (prototype).** Which card is on the stage, whether the
+  filters card is open, how much of the screen the page gets: a rules table decides from
+  screen state, and a second session of the same model can take the rows over; that
+  session is off by default
   ([ADR 0008](docs/adr/0008-display-agent-and-cards-stage.md)).
 - **Lets the user pick the model.** A short catalog of on-device models (Gemma 4 E2B
   default), downloaded from the public litert-community catalog, switchable at runtime.

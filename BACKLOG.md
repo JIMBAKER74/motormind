@@ -187,6 +187,16 @@ VA-10, then VA-8 and VA-12.
 - **VA-1.4.1** As a reviewer, I want an in-app diagnostics screen reporting cold start,
   time to first token, tokens per second, peak memory and extraction score, exportable as
   JSON, so that `docs/MEASUREMENTS.md` is real. Optional upload. (TQ11)
+- **VA-1.4.2** First real-device run: Galaxy Z Fold 4, Gemma 4 E2B, 2026-10-12, from the
+  engine's own log lines over `adb logcat`; `docs/MEASUREMENTS.md`. **Done.** Still to
+  take: the rules-only baseline, and the display agent after VA-1.4.3.
+- **VA-1.4.3** Display decisions coalesce: one per settled screen, never a queue, and
+  the display prompt must not grow with the conversation (measured: ten queued decisions
+  in 90 s, prefill climbing from 4 s to 30 s as the history was replayed into each).
+- **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
+  remaining, and old tool results leave the history before the window fills (measured: a
+  4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
+  engine's way to rebuild a shorter history).
 
 ---
 

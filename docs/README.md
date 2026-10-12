@@ -12,7 +12,7 @@ this project.
 | [DELOITTE_MAPPING.md](DELOITTE_MAPPING.md) | The project mapped to the AI Dossier pillars and trust principles | ready |
 | [UPSTREAM.md](UPSTREAM.md) | Fork relationship and what was trimmed | ready |
 | [adr/](adr/) | Architecture decision records 0001–0008 | see each |
-| `MEASUREMENTS.md` | Per-model, per-device cold start, time to first token, throughput, memory, extraction score | planned (VA-1.4) |
+| [MEASUREMENTS.md](MEASUREMENTS.md) | Real-device numbers: load, prefill, decode, memory, the display agent's cost | first run 2026-10-12 (Galaxy Z Fold 4) |
 | `PRIVACY.md` | What is stored, where, what leaves the device, what analytics collect | planned (VA-7) |
 | `POLICY.md` | Non-salesperson policy, advertising rules, no transaction compensation | planned (VA-8) |
 | `DISCLOSURES.md` | The long-form disclosures, also published as the web page the app links to | planned (VA-4.1) |
