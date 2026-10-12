@@ -88,6 +88,10 @@ final searchProvider = NotifierProvider<SearchService, SearchState>(SearchServic
 final class SearchService extends Notifier<SearchState> {
   Timer? _debounce;
 
+  /// Images with an address on the page at the last check; see
+  /// [refreshImages].
+  int _lastImageCount = -1;
+
   /// Bumped per apply so a slower, older read cannot overwrite a newer one.
   int _generation = 0;
 
@@ -151,16 +155,22 @@ final class SearchService extends Notifier<SearchState> {
   /// the web pane. Nothing happens while a search is being applied.
   Future<void> refreshImages() async {
     if (state.applying) return;
+    final store = ref.read(listingStoreProvider);
+    if (store.all.isEmpty || store.all.every((l) => l.imageUrl != null)) return;
+    final browser = ref.read(browserProvider.notifier);
     final List<VehicleListing> fresh;
     try {
-      fresh = await ref.read(browserProvider.notifier).rereadOpenPage();
+      // A full read parses the whole page; only do it when the page has
+      // more images than the last time it was asked.
+      final images = await browser.loadedImageCount();
+      if (images == _lastImageCount) return;
+      _lastImageCount = images;
+      fresh = await browser.rereadOpenPage();
     } on Exception catch (e) {
       logDev('image refresh failed: $e');
       return;
     }
     if (fresh.isEmpty) return;
-    final store = ref.read(listingStoreProvider);
-    if (store.all.every((l) => l.imageUrl != null)) return;
     final filled = store.mergeImages(fresh);
     logDev('images: filled $filled from the page as browsed');
     if (filled == 0) return;

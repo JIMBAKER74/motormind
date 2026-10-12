@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/widgets/compact_chip.dart';
+import '../../services/log.dart';
 import '../browser/browser_service.dart';
 import '../chat/cards/card_shell.dart';
 import '../chat/cards/formatting.dart';
@@ -76,6 +77,9 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
               viewed: signals.viewed.contains(key),
               liked: signals.liked.contains(key),
               onTap: () {
+                // Taps are events worth a line: the log is how a session is
+                // read back, and a tap on a tile is not page content.
+                logDev('tap: listing tile ${listings.indexOf(l) + 1} of ${listings.length}');
                 setState(() => _open = _open == key ? null : key);
                 if (_open == key) signalsNotifier.markViewed(l);
                 // The third quick tap on one tile is a signal, not a toggle.

@@ -83,14 +83,17 @@ final class BigPhotoNotifier extends Notifier<String?> {
   void show(String? key) => state = key;
 }
 
-/// Counts quick repeated taps on one listing, the signal behind "I see you
+/// Counts repeated taps on one listing, the signal behind "I see you
 /// tapping that one". Three taps on the same tile inside [window] is a
 /// person repeating themselves because the first tap did not give them
-/// what they wanted; the app answers that instead of waiting for a design
-/// cycle to notice it (the owner, 2026-10-12).
+/// what they wanted: a behavior that does not match what the element is
+/// for, which is the clearest sign they are not finding what they want. Not
+/// necessarily quick: someone who does not know what to expect taps slowly
+/// (the owner, 2026-10-12). The app answers instead of waiting for a design
+/// cycle to notice.
 final class RepeatedTaps {
   /// Taps within this long of each other count as one run.
-  static const window = Duration(seconds: 15);
+  static const window = Duration(seconds: 60);
 
   /// Taps in a run that mean the person wants something else.
   static const threshold = 3;

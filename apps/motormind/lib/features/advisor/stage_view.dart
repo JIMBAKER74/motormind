@@ -79,109 +79,122 @@ class _StageViewState extends ConsumerState<StageView> {
     // The pill counts cards only when there is more than one to switch
     // between (the chip strip is the switch); one card needs no number.
     final cardsLabel = stage.cards.length > 1 ? 'Cards · ${stage.cards.length}' : 'Cards';
-    return LayoutBuilder(
-      builder: (context, constraints) => Column(
+    final paneHeight = reading ? _readingStripHeight : _parkedPaneHeight;
+    final modeRow = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-            child: Row(
-              children: [
-                SegmentedButton<StageMode>(
-                  key: const Key('stage-mode'),
-                  segments: [
-                    const ButtonSegment(
-                      value: StageMode.web,
-                      icon: Icon(Icons.public, size: 16),
-                      label: Text('Web'),
-                    ),
-                    ButtonSegment(
-                      value: StageMode.cards,
-                      icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
-                      label: Text(cardsLabel),
-                      enabled: hasCards,
-                    ),
-                  ],
-                  selected: {webMode ? StageMode.web : StageMode.cards},
-                  onSelectionChanged: (s) {
-                    ref.read(stageProvider.notifier).setMode(s.first);
-                    // Coming back from the page: whatever the person's
-                    // browsing loaded is read off the page as it is.
-                    if (s.first == StageMode.cards) {
-                      ref.read(searchProvider.notifier).refreshImages();
-                    }
-                  },
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                ),
-              ],
-            ),
-          ),
-          // The pane: full, a labeled strip during a read, or parked.
-          SizedBox(
-            key: const Key('web-pane-slot'),
-            height: webMode
-                ? constraints.maxHeight - _modeRowHeight
-                : reading
-                ? _readingStripHeight
-                : _parkedPaneHeight,
-            child: ClipRect(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  pane,
-                  if (reading)
-                    Align(
-                      alignment: Alignment.bottomLeft,
-                      child: Container(
-                        key: const Key('reading-strip'),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        color: theme.colorScheme.surface.withValues(alpha: 0.85),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              ChatStrings.readingSite(search.siteName),
-                              style: theme.textTheme.labelSmall,
-                            ),
-                            const SizedBox(width: 8),
-                            // The owner asked for a way to make the page big.
-                            InkWell(
-                              key: const Key('strip-expand'),
-                              onTap: () => ref.read(stageProvider.notifier).setMode(StageMode.web),
-                              child: const Icon(Icons.open_in_full, size: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
+          SegmentedButton<StageMode>(
+            key: const Key('stage-mode'),
+            segments: [
+              const ButtonSegment(
+                value: StageMode.web,
+                icon: Icon(Icons.public, size: 16),
+                label: Text('Web'),
               ),
-            ),
+              ButtonSegment(
+                value: StageMode.cards,
+                icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
+                label: Text(cardsLabel),
+                enabled: hasCards,
+              ),
+            ],
+            selected: {webMode ? StageMode.web : StageMode.cards},
+            onSelectionChanged: (s) {
+              ref.read(stageProvider.notifier).setMode(s.first);
+              // Coming back from the page: whatever the person's browsing
+              // loaded is read off the page as it is.
+              if (s.first == StageMode.cards) {
+                ref.read(searchProvider.notifier).refreshImages();
+              }
+            },
+            showSelectedIcon: false,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
           ),
-          if (!webMode)
-            Expanded(
-              child: hasCards
-                  ? _Cards(stage: stage, focused: stage.focused!)
-                  : Center(
-                      child: Text(
-                        ChatStrings.readingSite(search.siteName),
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
-            ),
         ],
       ),
     );
+    // A stack, not a LayoutBuilder: a LayoutBuilder around the platform
+    // view asserted on every frame of a cold start (layout_builder.dart,
+    // "slot == null") and held the splash screen (2026-10-12). Positioned
+    // slots size the pane with no layout callback at all.
+    final paneSlot = Positioned(
+      left: 0,
+      right: 0,
+      top: 0,
+      height: webMode ? null : paneHeight,
+      bottom: webMode ? 0 : null,
+      child: SizedBox.expand(
+        key: const Key('web-pane-slot'),
+        child: ClipRect(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              pane,
+              if (reading)
+                Align(
+                  alignment: Alignment.bottomLeft,
+                  child: Container(
+                    key: const Key('reading-strip'),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    color: theme.colorScheme.surface.withValues(alpha: 0.85),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          ChatStrings.readingSite(search.siteName),
+                          style: theme.textTheme.labelSmall,
+                        ),
+                        const SizedBox(width: 8),
+                        // The owner asked for a way to make the page big.
+                        InkWell(
+                          key: const Key('strip-expand'),
+                          onTap: () => ref.read(stageProvider.notifier).setMode(StageMode.web),
+                          child: const Icon(Icons.open_in_full, size: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return Column(
+      children: [
+        modeRow,
+        Expanded(
+          child: Stack(
+            children: [
+              paneSlot,
+              if (!webMode)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: paneHeight,
+                  bottom: 0,
+                  child: hasCards
+                      ? _Cards(stage: stage, focused: stage.focused!)
+                      : Center(
+                          child: Text(
+                            ChatStrings.readingSite(search.siteName),
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
-
-  /// Height of the mode row above the pane, so a full pane fills the rest.
-  static const double _modeRowHeight = 46;
 }
 
 class _Cards extends ConsumerStatefulWidget {

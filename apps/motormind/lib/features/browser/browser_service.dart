@@ -188,6 +188,21 @@ final class BrowserService extends Notifier<BrowserState> {
     );
   }
 
+  /// How many images on the open page have an address, the cheap question
+  /// asked every few seconds while the page is in view; a re-read is worth
+  /// doing only when the answer changed. Zero when no pane is open.
+  Future<int> loadedImageCount() async {
+    final c = _controller;
+    if (c == null) return 0;
+    final raw = await c.runJavaScriptReturningResult(_imageCountJs);
+    return int.tryParse(raw.toString().replaceAll('"', '')) ?? 0;
+  }
+
+  static const _imageCountJs =
+      '(function(){var n=0;var im=document.images;'
+      'for(var i=0;i<im.length;i++){if(im[i].currentSrc||im[i].getAttribute("src")){n++;}}'
+      'return n;})();';
+
   /// Reads the open page again as it is, with the site's recipe: no
   /// navigation, no probing, no scrolling. Used to pick up the images the
   /// person's own browsing has made the page load (lazy carousels fill in

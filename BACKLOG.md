@@ -218,6 +218,12 @@ VA-10, then VA-8 and VA-12.
   captured page 2 for the URL parameter (QUESTIONS Q83).
 - **VA-1.4.5** The app's log output stopped reaching logcat for 37 minutes while the
   process lived (TQ83); find out why before relying on the log for anything.
+- **VA-2.6.4** The stage's pane is sized by positioned slots, never a layout callback:
+  a `LayoutBuilder` around the platform view asserted on every frame of a cold start and
+  held the splash screen (TQ87). **Done.** The pane stays in one spot in the tree.
+- **VA-2.6.5** Every tile tap, widget failure and image refresh is a log line, so a
+  session reads back (the owner's rule: the log says what happened, not only what broke).
+  **Done.** Next: taps on other controls, and the journal in the display agent's record.
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
