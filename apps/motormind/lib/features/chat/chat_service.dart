@@ -81,7 +81,9 @@ final class ChatService extends Notifier<ChatState> {
         driver = await factory(instruction);
       } else {
         final models = ref.read(advisorModelServiceProvider.notifier);
-        final model = models.loadedModel;
+        // A tap on "Ask Motormind" while the model is still loading waits
+        // for it rather than failing; the panel shows the load meanwhile.
+        final model = await models.whenLoaded();
         final activeId = ref.read(advisorModelServiceProvider).value?.activeId;
         final spec = activeId == null ? null : ModelCatalog.byId(activeId);
         if (model == null || spec == null) {

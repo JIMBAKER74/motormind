@@ -103,4 +103,14 @@ abstract final class ModelCatalog {
   static const AdvisorModelSpec defaultModel = gemma4E2B;
 
   static AdvisorModelSpec? byId(String id) => all.where((m) => m.id == id).firstOrNull;
+
+  /// The model to offer a phone with [freeGb] of memory available: the
+  /// first in [all] whose [AdvisorModelSpec.minFreeRamMb] fits, the lightest
+  /// when none does, and [defaultModel] when the memory is unknown. People
+  /// should not have to know what a model is to start; the app picks and
+  /// the Models screen stays for anyone who wants to choose.
+  static AdvisorModelSpec forFreeMemory(double? freeGb) {
+    if (freeGb == null) return defaultModel;
+    return all.where((m) => m.minFreeRamMb / 1024 <= freeGb).firstOrNull ?? all.last;
+  }
 }

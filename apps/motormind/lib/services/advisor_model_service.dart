@@ -51,14 +51,29 @@ final class ModelFailed extends ModelStatus {
   final bool needsToken;
 }
 
-/// What the app knows about each catalog model, and which one is active.
+/// What the app knows about each catalog model, which one is active, and
+/// which one it would offer a person who has none.
 class ModelsState {
-  const ModelsState({required this.statuses, this.activeId});
+  const ModelsState({required this.statuses, this.activeId, this.recommendedId});
 
   final Map<String, ModelStatus> statuses;
   final String? activeId;
 
+  /// The catalog model that fits this phone's free memory
+  /// ([ModelCatalog.forFreeMemory]); what the conversation offers to
+  /// download when nothing is installed.
+  final String? recommendedId;
+
   ModelStatus statusOf(AdvisorModelSpec m) => statuses[m.id] ?? const ModelNotInstalled();
+
+  /// The recommended model's spec, or the catalog default.
+  AdvisorModelSpec get recommended =>
+      (recommendedId == null ? null : ModelCatalog.byId(recommendedId!)) ??
+      ModelCatalog.defaultModel;
+
+  /// True while any model is downloading or loading, so the conversation
+  /// can say "getting ready" instead of "no model".
+  bool get busy => statuses.values.any((s) => s is ModelDownloading || s is ModelLoading);
 
   ModelsState copyWith({
     Map<String, ModelStatus>? statuses,
@@ -67,6 +82,7 @@ class ModelsState {
   }) => ModelsState(
     statuses: statuses ?? this.statuses,
     activeId: clearActive ? null : (activeId ?? this.activeId),
+    recommendedId: recommendedId,
   );
 }
 
@@ -160,12 +176,26 @@ final class AdvisorModelService extends AsyncNotifier<ModelsState> {
 
   InferenceModel? _loaded;
 
+  /// Completes with the model when a load in flight finishes, or with null
+  /// when it fails; see [whenLoaded].
+  Completer<InferenceModel?>? _loading;
+
   /// Cancel tokens per model id, so cancelling one download never hits
   /// another.
   final Map<String, CancelToken> _cancels = {};
 
   /// The loaded model, for the chat layer. Null until [activate] succeeds.
   InferenceModel? get loadedModel => _loaded;
+
+  /// The loaded model, waiting for a load in progress first. Null when
+  /// nothing is loaded or loading, so a conversation that starts while the
+  /// model is still coming into memory simply waits instead of failing.
+  Future<InferenceModel?> whenLoaded() async {
+    if (_loaded != null) return _loaded;
+    final pending = _loading;
+    if (pending != null && !pending.isCompleted) return pending.future;
+    return null;
+  }
 
   @override
   Future<ModelsState> build() async {
@@ -180,7 +210,33 @@ final class AdvisorModelService extends AsyncNotifier<ModelsState> {
     // Closing at teardown is fire-and-forget: nothing can await a disposed
     // notifier.
     ref.onDispose(() => unawaited(_loaded?.close() ?? Future.value()));
-    return ModelsState(statuses: statuses);
+    final recommended = ModelCatalog.forFreeMemory(await availableMemoryGb());
+    // An installed model loads without being asked: the default when it is
+    // on the phone, otherwise whatever is. Nobody should have to open the
+    // Models screen to start a conversation (observed 2026-10-12: the owner
+    // chose the model by hand on every launch and found the step baffling).
+    // Scheduled after this build settles, since activate() writes state.
+    final start = ModelCatalog.all
+        .where((m) => statuses[m.id] is ModelInstalled)
+        .fold<AdvisorModelSpec?>(null, (best, m) => best ?? m);
+    if (start != null) {
+      // Created now so a conversation that starts before the timer fires
+      // waits on it (see whenLoaded); activate() completes it.
+      _loading = Completer<InferenceModel?>();
+      unawaited(
+        Future<void>.delayed(Duration.zero, () {
+          final pending = _loading;
+          // Skip when something was activated meanwhile (a test, a tap on
+          // the Models screen) or the notifier is gone.
+          if (ref.mounted && _loaded == null && pending != null && !pending.isCompleted) {
+            unawaited(activate(start));
+          } else if (pending != null && !pending.isCompleted) {
+            pending.complete(null);
+          }
+        }),
+      );
+    }
+    return ModelsState(statuses: statuses, recommendedId: recommended.id);
   }
 
   void _set(AdvisorModelSpec m, ModelStatus s) {
@@ -204,6 +260,10 @@ final class AdvisorModelService extends AsyncNotifier<ModelsState> {
         cancelToken: cancel,
       );
       _set(m, const ModelInstalled());
+      // A model downloaded while nothing is active is the one the person
+      // wants to talk to; loading it is the obvious next step, not a second
+      // button.
+      if (state.value?.activeId == null) await activate(m);
     } on DownloadException catch (e) {
       // 401 and 403 mean a token, not a retry, is the fix.
       final needsToken = e.error is UnauthorizedError || e.error is ForbiddenError;
@@ -254,24 +314,39 @@ final class AdvisorModelService extends AsyncNotifier<ModelsState> {
       statuses[current.activeId!] = const ModelInstalled();
     }
     statuses[m.id] = const ModelLoading();
-    state = AsyncData(ModelsState(statuses: statuses));
+    state = AsyncData(current.copyWith(statuses: statuses, clearActive: true));
+    final pending = _loading;
+    final loading = pending != null && !pending.isCompleted
+        ? pending
+        : (_loading = Completer<InferenceModel?>());
     try {
       _loaded = await ref.read(edgeAiGatewayProvider).load(m, token: await _token());
       state = AsyncData(
-        ModelsState(statuses: {...statuses, m.id: const ModelReady()}, activeId: m.id),
+        current.copyWith(statuses: {...statuses, m.id: const ModelReady()}, activeId: m.id),
       );
+      if (!loading.isCompleted) loading.complete(_loaded);
     } on Exception catch (e) {
       logDev('load of ${m.id} failed: $e');
-      state = AsyncData(ModelsState(statuses: {...statuses, m.id: const ModelFailed(_loadFailed)}));
+      state = AsyncData(
+        current.copyWith(
+          statuses: {...statuses, m.id: const ModelFailed(_loadFailed)},
+          clearActive: true,
+        ),
+      );
+      if (!loading.isCompleted) loading.complete(null);
     }
   }
 }
 
 /// Free memory below which the catalog's window is cut to [_safeWindow],
-/// and below which again to [_minimalWindow]. Emulator-era numbers: a 6 GB
-/// emulator running Gemma 4 E2B with an 8k window plus a WebView reached
-/// 4.8 GB resident and the OS killed the app.
-const _comfortableFreeGb = 5.5;
+/// and below which again to [_minimalWindow]. The first number came from
+/// the emulator: a 6 GB emulator running Gemma 4 E2B with an 8k window plus
+/// a WebView reached 4.8 GB resident and the OS killed the app. Measured on
+/// a Galaxy Z Fold 4 (12 GB) on 2026-10-12: the OS reported 4.5 GB available
+/// at launch, loading Gemma 4 E2B on the GPU took that to 2.9 GB, and the
+/// 4,096 window the old 5.5 GB threshold chose overflowed on the third turn
+/// after one page read. 4 GB keeps that phone on the full window.
+const _comfortableFreeGb = 4.0;
 const _tightFreeGb = 3.0;
 const _safeWindow = 4096;
 const _minimalWindow = 2048;
@@ -280,21 +355,24 @@ const _minimalWindow = 2048;
 /// value is a ceiling, and a device with less room gets a smaller window.
 /// Exposed for the gateway and for tests of the thresholds.
 Future<int> contextWindowFor(AdvisorModelSpec spec) async {
-  var window = spec.maxTokens;
+  final gb = await availableMemoryGb();
+  if (gb == null) return spec.maxTokens;
+  final window = windowForFreeMemory(gb, ceiling: spec.maxTokens);
+  logDev('available memory ${gb.toStringAsFixed(1)} GB -> context $window');
+  return window;
+}
+
+/// Memory the OS reports as available, in GB, or null where the
+/// diagnostics plugin has no answer (tests, desktop).
+Future<double?> availableMemoryGb() async {
   try {
-    if (FlutterEdgeAiDiagnostics.isSupported) {
-      final snap = await FlutterEdgeAiDiagnostics.memorySnapshot();
-      final available = snap.availableBytes;
-      if (available != null) {
-        final gb = available / (1024 * 1024 * 1024);
-        window = windowForFreeMemory(gb, ceiling: window);
-        logDev('available memory ${gb.toStringAsFixed(1)} GB -> context $window');
-      }
-    }
+    if (!FlutterEdgeAiDiagnostics.isSupported) return null;
+    final available = (await FlutterEdgeAiDiagnostics.memorySnapshot()).availableBytes;
+    return available == null ? null : available / (1024 * 1024 * 1024);
   } on Exception catch (e) {
     logDev('memory snapshot failed: $e');
+    return null;
   }
-  return window;
 }
 
 /// The pure part of [contextWindowFor]: the window for [freeGb] of free

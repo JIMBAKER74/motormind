@@ -19,7 +19,13 @@ final class ExternalTools {
 
   /// How much page text the model gets from `read_page`; the rest is on
   /// screen for the person and would only cost context tokens.
-  static const pageTextForModel = 1500;
+  static const pageTextForModel = 1000;
+
+  /// A page that yields at least this many listings is a results page: the
+  /// model gets the listings and not the prose. Measured 2026-10-12 on a
+  /// Galaxy Z Fold 4: a 4,096-token window overflowed on the third turn
+  /// because every page read also carried its text.
+  static const listingsMeanResultsPage = 3;
 
   /// Listings the model gets from one read; cards on the stage show more.
   static const listingsForModel = 8;
@@ -66,10 +72,12 @@ final class ExternalTools {
       return {'error': e.message};
     }
     final text = extract.text;
+    final isResults = extract.listings.length >= listingsMeanResultsPage;
     return {
       'url': extract.url,
       'title': extract.title,
-      'text': text.length > pageTextForModel ? '${text.substring(0, pageTextForModel)}…' : text,
+      if (!isResults)
+        'text': text.length > pageTextForModel ? '${text.substring(0, pageTextForModel)}…' : text,
       'facts': extractListingFacts(text).toJson(),
       'listings': [for (final l in extract.listings.take(listingsForModel)) l.toModelJson()],
     };

@@ -2,7 +2,18 @@
 /// reviewable diff rather than a scavenger hunt (the same rule disclosures
 /// follow in `advisor_core`).
 abstract final class ChatStrings {
-  static const noModel = 'No model is loaded. Open Models and choose one.';
+  static const noModel = 'Motormind needs a model on this phone before it can answer.';
+  static const otherModels = 'Other models';
+  static const modelRetry = 'Retry';
+
+  /// The panel's line while a model comes into memory (about fifteen
+  /// seconds for Gemma 4 E2B on a 2022 flagship).
+  static String loadingModel(String name) => 'Loading $name… this takes a few seconds.';
+
+  static String downloadingModel(String name, int percent) => 'Downloading $name · $percent%';
+
+  /// The one-tap offer when nothing is installed; [size] is the download.
+  static String downloadModel(String name, String size) => 'Download $name ($size)';
   static const startFailed = 'Motormind could not start.';
   static const tooLong = 'Motormind took too long to answer.';
   static const contextFull =
@@ -42,6 +53,14 @@ abstract final class ChatStrings {
 
   /// A price ceiling chip, in thousands ("Under \$35k").
   static String underPrice(int dollars) => 'Under \$${dollars ~/ 1000}k';
+
+  /// A price band chip: "Under \$25k", "\$25k–\$40k", "Over \$60k".
+  static String priceBand(int? min, int? max) => switch ((min, max)) {
+    (null, final int max) => underPrice(max),
+    (final int min, null) => 'Over \$${min ~/ 1000}k',
+    (final int min, final int max) => '\$${min ~/ 1000}k–\$${max ~/ 1000}k',
+    (null, null) => anyPrice,
+  };
 
   /// A mileage ceiling chip, in thousands ("Under 50k mi").
   static String underMiles(int miles) => 'Under ${miles ~/ 1000}k mi';

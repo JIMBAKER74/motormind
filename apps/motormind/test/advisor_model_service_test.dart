@@ -83,6 +83,27 @@ void main() {
     expect(state.activeId, isNull);
   });
 
+  test('an installed model loads on its own after build; the default first', () async {
+    gateway.installed.addAll([ModelCatalog.qwen3Small.id, ModelCatalog.gemma4E2B.id]);
+    await ready();
+    final n = container.read(advisorModelServiceProvider.notifier);
+    expect(await n.whenLoaded(), isNotNull);
+    expect(gateway.loaded, [ModelCatalog.gemma4E2B.id]);
+    expect(container.read(advisorModelServiceProvider).value!.activeId, ModelCatalog.gemma4E2B.id);
+  });
+
+  test('whenLoaded is null when nothing is installed', () async {
+    await ready();
+    expect(await container.read(advisorModelServiceProvider.notifier).whenLoaded(), isNull);
+  });
+
+  test('the recommended model follows free memory', () {
+    expect(ModelCatalog.forFreeMemory(null), ModelCatalog.defaultModel);
+    expect(ModelCatalog.forFreeMemory(4.5), ModelCatalog.gemma4E2B); // the Fold 4 at launch
+    expect(ModelCatalog.forFreeMemory(2.0), ModelCatalog.qwen3Small);
+    expect(ModelCatalog.forFreeMemory(0.5), ModelCatalog.all.last);
+  });
+
   test('download walks through progress to Installed and passes the stored token', () async {
     await ready();
     await tokens.write('hf_test');
@@ -93,9 +114,10 @@ void main() {
     });
     await container.read(advisorModelServiceProvider.notifier).download(ModelCatalog.gemma4E2B);
     expect(seen, [0, 33, 67, 100]);
+    // Nothing was active, so the download is followed by the load.
     expect(
       container.read(advisorModelServiceProvider).value!.statusOf(ModelCatalog.gemma4E2B),
-      isA<ModelInstalled>(),
+      isA<ModelReady>(),
     );
     expect(gateway.lastToken, 'hf_test');
   });
@@ -141,7 +163,8 @@ void main() {
 
   test('the context window shrinks with free memory and never grows past the catalog', () {
     expect(windowForFreeMemory(8.0, ceiling: 8192), 8192);
-    expect(windowForFreeMemory(5.0, ceiling: 8192), 4096);
+    expect(windowForFreeMemory(4.5, ceiling: 8192), 8192); // the Fold 4 at launch
+    expect(windowForFreeMemory(3.5, ceiling: 8192), 4096);
     expect(windowForFreeMemory(2.5, ceiling: 8192), 2048);
     expect(windowForFreeMemory(2.5, ceiling: 1024), 1024);
   });

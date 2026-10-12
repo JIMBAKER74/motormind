@@ -2,6 +2,7 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../services/advisor_model_service.dart';
 import '../chat/chat_panel.dart';
 import 'display_agent.dart';
 import 'stage.dart';
@@ -49,6 +50,9 @@ class AdvisorSurfaceHost extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(surfaceProvider);
+    // Watched from the first frame so the installed model starts loading at
+    // launch, not when the panel first opens; the panel only shows the load.
+    ref.watch(advisorModelServiceProvider);
     // The display decision picks Web or Cards for the stage; a manual flip
     // wins. Listened here because this host outlives the stage view.
     ref.listen(displayProvider, (_, d) => ref.read(stageProvider.notifier).applyDecision(d.stage));
