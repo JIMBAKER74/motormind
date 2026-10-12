@@ -27,6 +27,39 @@ class ListingStore {
     }
   }
 
+  /// Fills in images for stored listings that have none, from [fresh]
+  /// listings read off the same page later (after the person scrolled it and
+  /// the site's lazy images arrived). Matched by [VehicleListing.dedupeKey];
+  /// nothing else about a stored listing changes. Returns how many were
+  /// filled. The person's own browsing is the source of images; the app
+  /// never scrolls a page to get them.
+  int mergeImages(Iterable<VehicleListing> fresh) {
+    var filled = 0;
+    for (final f in fresh) {
+      final url = f.imageUrl;
+      if (url == null) continue;
+      final i = _all.indexWhere((l) => l.imageUrl == null && l.dedupeKey == f.dedupeKey);
+      if (i < 0) continue;
+      final l = _all[i];
+      _all[i] = VehicleListing(
+        id: l.id,
+        title: l.title,
+        sourceUrl: l.sourceUrl,
+        readAt: l.readAt,
+        price: l.price,
+        mileage: l.mileage,
+        year: l.year,
+        make: l.make,
+        model: l.model,
+        bodyStyle: l.bodyStyle,
+        imageUrl: url,
+        detailUrl: l.detailUrl ?? f.detailUrl,
+      );
+      filled++;
+    }
+    return filled;
+  }
+
   /// Forgets every listing.
   void clear() {
     _all.clear();

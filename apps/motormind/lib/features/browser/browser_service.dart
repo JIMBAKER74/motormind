@@ -202,6 +202,19 @@ final class BrowserService extends Notifier<BrowserState> {
     );
   }
 
+  /// Reads the open page again as it is, with the site's recipe: no
+  /// navigation, no probing, no scrolling. Used to pick up the images the
+  /// person's own browsing has made the page load (lazy carousels fill in
+  /// as they scroll). Empty when no pane is open or the recipe does not
+  /// read the page.
+  Future<List<VehicleListing>> rereadOpenPage() async {
+    final c = _controller;
+    if (c == null) return const [];
+    final page = await _snapshot(c);
+    if (_looksLikeChallenge(page)) return const [];
+    return _readWithRecipe(page, DateTime.now());
+  }
+
   /// The page as the person sees it right now, for Capture: fresh HTML,
   /// title and URL. No navigation, no scrolling.
   Future<({String url, String title, String html, String text})> snapshot() async {

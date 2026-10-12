@@ -51,6 +51,10 @@ abstract final class ChatStrings {
   static const collapse = 'Collapse';
   static const reading = 'reading…';
 
+  /// The stage's label while the app opens and reads a site's page, so the
+  /// page moving on its own is seen as the read it is, not a bug.
+  static String readingSite(String site) => 'Reading $site…';
+
   /// A price ceiling chip, in thousands ("Under \$35k").
   static String underPrice(int dollars) => 'Under \$${dollars ~/ 1000}k';
 

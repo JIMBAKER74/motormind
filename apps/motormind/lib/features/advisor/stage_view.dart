@@ -5,8 +5,19 @@ import '../../app/widgets/scroll_cut.dart';
 import '../browser/browser_pane.dart';
 import '../chat/cards/formatting.dart';
 import '../chat/chat_service.dart';
+import '../chat/chat_strings.dart';
 import '../chat/result_card.dart';
+import '../search/search_service.dart';
 import 'stage.dart';
+
+/// One identity for the web pane wherever the stage puts it (full, or a
+/// strip above the cards during a read), so moving it never recreates the
+/// platform view and reloads the page.
+final GlobalKey _paneKey = GlobalKey(debugLabel: 'web-pane');
+
+/// Height of the page strip shown above the cards while the app reads a
+/// page: enough to see it move, not enough to read it.
+const double _readingStripHeight = 112;
 
 /// The web pane is injectable so widget tests do not need a platform webview.
 final webPaneBuilderProvider = Provider<Widget Function()>(
@@ -22,8 +33,14 @@ class StageView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stage = ref.watch(stageProvider);
+    final search = ref.watch(searchProvider);
     final hasCards = stage.cards.isNotEmpty;
     final showingCards = stage.mode == StageMode.cards && hasCards;
+    final pane = KeyedSubtree(key: _paneKey, child: ref.watch(webPaneBuilderProvider)());
+    // The pill counts what the person sees: listings when the stage holds
+    // them, cards otherwise (interim; design notes Q77).
+    final tiles = stage.cards.fold<int>(0, (n, c) => n + listingsOf(c.result).length);
+    final cardsLabel = !hasCards ? 'Cards' : 'Cards · ${tiles > 0 ? tiles : stage.cards.length}';
     return Column(
       children: [
         Padding(
@@ -41,22 +58,72 @@ class StageView extends ConsumerWidget {
                   ButtonSegment(
                     value: StageMode.cards,
                     icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
-                    label: Text(hasCards ? 'Cards (${stage.cards.length})' : 'Cards'),
+                    label: Text(cardsLabel),
                     enabled: hasCards,
                   ),
                 ],
                 selected: {showingCards ? StageMode.cards : StageMode.web},
-                onSelectionChanged: (s) => ref.read(stageProvider.notifier).setMode(s.first),
+                onSelectionChanged: (s) {
+                  ref.read(stageProvider.notifier).setMode(s.first);
+                  // Coming back from the page: whatever the person's browsing
+                  // loaded (lazy images) is read off the page as it is.
+                  if (s.first == StageMode.cards) {
+                    ref.read(searchProvider.notifier).refreshImages();
+                  }
+                },
                 showSelectedIcon: false,
                 style: const ButtonStyle(visualDensity: VisualDensity.compact),
               ),
             ],
           ),
         ),
+        // While the app reads a page, the page is a short strip that can be
+        // seen moving, labeled as the read it is, and the cards keep the
+        // room (the owner's note: an unlabeled scroll looks like a bug).
+        if (search.applying && stage.mode != StageMode.web)
+          SizedBox(
+            key: const Key('reading-strip'),
+            height: _readingStripHeight,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                pane,
+                Align(
+                  alignment: Alignment.bottomLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.85),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          ChatStrings.readingSite(search.siteName),
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Expanded(
           child: showingCards
               ? _Cards(stage: stage, focused: stage.focused!)
-              : ref.watch(webPaneBuilderProvider)(),
+              : (search.applying && stage.mode != StageMode.web)
+              ? Center(
+                  child: Text(
+                    ChatStrings.readingSite(search.siteName),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                )
+              : pane,
         ),
       ],
     );

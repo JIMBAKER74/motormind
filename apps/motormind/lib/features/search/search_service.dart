@@ -144,6 +144,29 @@ final class SearchService extends Notifier<SearchState> {
     _debounce = Timer(delay ?? ref.read(searchDebounceProvider), () => unawaited(apply()));
   }
 
+  /// Picks up the images the person's own browsing loaded: the open page is
+  /// read again as it is (no navigation, no scrolling), images are merged
+  /// into the listings already read, and the listings card is shown again
+  /// when any were filled. Called when the person comes back to Cards from
+  /// the web pane. Nothing happens while a search is being applied.
+  Future<void> refreshImages() async {
+    if (state.applying) return;
+    final List<VehicleListing> fresh;
+    try {
+      fresh = await ref.read(browserProvider.notifier).rereadOpenPage();
+    } on Exception catch (e) {
+      logDev('image refresh failed: $e');
+      return;
+    }
+    if (fresh.isEmpty) return;
+    final store = ref.read(listingStoreProvider);
+    final filled = store.mergeImages(fresh);
+    logDev('images: filled $filled from the page as browsed');
+    if (filled == 0) return;
+    final q = state.query;
+    _showResults(store.searchQuery(q), ref.read(browserProvider).url ?? site.home, q);
+  }
+
   /// Opens the site's results page for the query, reads it, and shows what
   /// matched. Safe to call repeatedly; a newer call wins.
   Future<void> apply() async {
