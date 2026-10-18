@@ -56,6 +56,12 @@ flutter doctor --android-licenses
 4. Create an emulator (Device Manager, Pixel 8 Pro, API 35, arm64) with at least **6 GB
    RAM** so a 2.4 GB model fits with headroom.
 
+   *Low-memory emulators (2026-10-18).* Android Studio's default "Medium Phone" device is
+   configured with 2 GB of RAM (it reports about 4 GB total and 2 GB free). Motormind runs
+   there, on the CPU, with the smallest context window it allows (4,096 tokens), and a
+   first turn takes about a minute. It is a useful stand-in for a low-memory phone and a
+   poor one for timing. For timing, use `motormind_pixel8` (8 GB) or a real phone.
+
 Real device: enable developer options and USB debugging on the Samsung Fold 4, plug in,
 `flutter devices`.
 

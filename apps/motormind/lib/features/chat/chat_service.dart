@@ -73,37 +73,11 @@ final class ChatService extends Notifier<ChatState> {
   Future<void> start() async {
     state = state.copyWith(busy: true, clearError: true);
     try {
-      final builder = await ref.read(promptAssetsProvider.future);
       final profile = _pipeline?.profile ?? const BuyerProfile();
-      final instruction = builder.build(profile: profile);
-      final factory = ref.read(chatDriverFactoryProvider);
-      ChatDriver driver;
-      if (factory != null) {
-        driver = await factory(instruction);
-      } else {
-        final models = ref.read(advisorModelServiceProvider.notifier);
-        // A tap on "Ask Motormind" while the model is still loading waits
-        // for it rather than failing; the panel shows the load meanwhile.
-        final model = await models.whenLoaded();
-        final activeId = ref.read(advisorModelServiceProvider).value?.activeId;
-        final spec = activeId == null ? null : ModelCatalog.byId(activeId);
-        if (model == null || spec == null) {
-          state = state.copyWith(busy: false, error: ChatStrings.noModel);
-          return;
-        }
-        // Close the previous chat before opening the next so two sessions
-        // never sit in device memory at once.
-        await _driver?.close();
-        _driver = null;
-        driver = await EdgeAiChatDriver.open(model, spec, systemInstruction: instruction);
+      if (!await _openSession(profile)) {
+        state = state.copyWith(busy: false, error: ChatStrings.noModel);
+        return;
       }
-      await _driver?.close();
-      _driver = driver;
-      _pipeline = TurnPipeline(
-        driver: driver,
-        profile: profile,
-        external: ref.read(externalToolsProvider).call,
-      );
       // A fresh conversation: every flag from the previous one is dropped.
       state = ChatState(
         ready: true,
@@ -115,6 +89,40 @@ final class ChatService extends Notifier<ChatState> {
     }
   }
 
+  /// Opens a model session and a pipeline for [profile], closing the old
+  /// one first. False when no model is loaded. The timeline is not touched,
+  /// so [start] and the full-window recovery in [_runTurn] share it.
+  Future<bool> _openSession(BuyerProfile profile) async {
+    final builder = await ref.read(promptAssetsProvider.future);
+    final instruction = builder.build(profile: profile);
+    final factory = ref.read(chatDriverFactoryProvider);
+    ChatDriver driver;
+    if (factory != null) {
+      driver = await factory(instruction);
+    } else {
+      final models = ref.read(advisorModelServiceProvider.notifier);
+      // A conversation that starts while the model is still loading waits
+      // for it rather than failing; the panel shows the load meanwhile.
+      final model = await models.whenLoaded();
+      final activeId = ref.read(advisorModelServiceProvider).value?.activeId;
+      final spec = activeId == null ? null : ModelCatalog.byId(activeId);
+      if (model == null || spec == null) return false;
+      // Close the previous chat before opening the next so two sessions
+      // never sit in device memory at once.
+      await _driver?.close();
+      _driver = null;
+      driver = await EdgeAiChatDriver.open(model, spec, systemInstruction: instruction);
+    }
+    await _driver?.close();
+    _driver = driver;
+    _pipeline = TurnPipeline(
+      driver: driver,
+      profile: profile,
+      external: ref.read(externalToolsProvider).call,
+    );
+    return true;
+  }
+
   void _replaceEntry(int index, TimelineEntry entry) {
     final t = [...state.timeline];
     t[index] = entry;
@@ -124,6 +132,10 @@ final class ChatService extends Notifier<ChatState> {
   /// [filtersCardComing] is set by [choose] when the filters card is about to
   /// join the conversation, so the first turn already knows it is on screen.
   Future<void> send(String text, {bool filtersCardComing = false}) async {
+    return _send(text, filtersCardComing: filtersCardComing);
+  }
+
+  Future<void> _send(String text, {bool filtersCardComing = false, bool reopened = false}) async {
     if (text.trim().isEmpty) return;
     // Motormind is always on: a message typed before the conversation has
     // started (the model still loading) starts it and then goes through,
@@ -134,14 +146,21 @@ final class ChatService extends Notifier<ChatState> {
     }
     final pipeline = _pipeline!;
     if (state.busy) return;
-    return _turn = _runTurn(pipeline, text, filtersCardComing: filtersCardComing);
+    return _turn = _runTurn(
+      pipeline,
+      text,
+      filtersCardComing: filtersCardComing,
+      reopened: reopened,
+    );
   }
 
   Future<void> _runTurn(
     TurnPipeline pipeline,
     String text, {
     required bool filtersCardComing,
+    bool reopened = false,
   }) async {
+    var reopen = false;
     final userMsg = ChatMessage(role: MessageRole.user, text: text.trim());
     var reply = const ChatMessage(role: MessageRole.motormind, text: '', streaming: true);
     // The obvious filters in a sentence ("a Honda sports car under 40k") apply
@@ -285,13 +304,33 @@ final class ChatService extends Notifier<ChatState> {
       }
     } on Exception catch (e) {
       logDev('turn failed: $e');
-      final msg = _friendly(e);
-      updateReply(reply.copyWith(text: reply.text.isEmpty ? msg : reply.text, streaming: false));
-      state = state.copyWith(error: msg);
+      if (!reopened && _contextOverflow.hasMatch(e.toString())) {
+        // The conversation outgrew the window. The person should not have
+        // to know what a window is: open a fresh session that keeps the
+        // profile (what they said they want, the mode, their numbers) and
+        // the transcript on screen, and send the message again, once. The
+        // model loses the earlier turns' wording, not the facts.
+        reopen = true;
+      } else {
+        final msg = _friendly(e);
+        updateReply(reply.copyWith(text: reply.text.isEmpty ? msg : reply.text, streaming: false));
+        state = state.copyWith(error: msg);
+      }
     } finally {
       logDev('turn done');
       state = state.copyWith(busy: false, clearActiveTool: true, clearTurnStartedAt: true);
     }
+    if (!reopen) return;
+    // The failed exchange leaves the transcript; the retry writes its own.
+    final t = [...state.timeline]..removeAt(replyIndex);
+    t.removeWhere((e) => e is MessageEntry && identical(e.message, userMsg));
+    state = state.copyWith(timeline: t, clearError: true);
+    logDev('window full: reopening the session and sending again');
+    if (!await _openSession(profile)) {
+      state = state.copyWith(error: ChatStrings.contextFull);
+      return;
+    }
+    await _send(text, filtersCardComing: filtersCardComing, reopened: true);
   }
 
   /// The listings currently on the stage.
@@ -469,7 +508,9 @@ final class ChatService extends Notifier<ChatState> {
 
   /// The engine's context-window overflow message, the one failure the
   /// person can act on (start a new conversation).
-  static final _contextOverflow = RegExp(r'exceeds available state|context (window|length)');
+  static final _contextOverflow = RegExp(
+    r'exceeds available state|Input token ids are too long|context (window|length)',
+  );
 
   static String _friendly(Object e) {
     if (e is TimeoutException) return ChatStrings.tooLong;

@@ -24,6 +24,10 @@ class ScriptedDriver implements ChatDriver {
   final List<String> systemInstructions = [];
   final List<String> prompts = [];
 
+  /// How many "long story" turns fail with the engine's full-window error
+  /// before one succeeds.
+  int overflowsLeft = 0;
+
   /// Completes each time a turn's stream closes, so tests can wait for the
   /// turn instead of sleeping.
   Completer<void> _idle = Completer<void>();
@@ -49,13 +53,25 @@ class ScriptedDriver implements ChatDriver {
       ..listen(null, onDone: _finish, onError: (_) => _finish());
   }
 
+  /// Called once per turn; a stream that errors calls both onError and
+  /// onDone, so the second call is a no-op.
   void _finish() {
+    if (_idle.isCompleted) return;
     _idle.complete();
     _started = Completer<void>();
   }
 
   Stream<DriverChunk> _reply(String userText, ToolCallHandler onToolCall) async* {
-    if (userText.contains('just looking') || userText.contains('sports car')) {
+    if (userText.contains('long story')) {
+      if (overflowsLeft > 0) {
+        overflowsLeft--;
+        throw Exception(
+          'Stream error: INVALID_ARGUMENT: Input token ids are too long. '
+          'Exceeding the maximum number of tokens allowed: 2755 >= 2048',
+        );
+      }
+      yield const DriverText('Here is the short version.');
+    } else if (userText.contains('just looking') || userText.contains('sports car')) {
       yield const DriverText('Take a look around; tap a filter or tell me more.');
     } else if (userText.contains('450')) {
       final r = await onToolCall('estimate_payment', {
@@ -308,6 +324,33 @@ void main() {
   });
 
   group('prompts and the escape', () {
+    testWidgets('a full window reopens the session and sends again, once', (tester) async {
+      final s = await _start(tester);
+      final opened = s.driver.systemInstructions.length;
+      s.driver.overflowsLeft = 1;
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('a long story about my budget'),
+      );
+      final chat = s.container.read(chatServiceProvider);
+      expect(chat.error, isNull);
+      expect(s.driver.systemInstructions.length, opened + 1); // one new session
+      expect(chat.messages.where((m) => m.text == 'a long story about my budget'), hasLength(1));
+      expect(chat.messages.last.text, 'Here is the short version.');
+    });
+
+    testWidgets('a window that is still full after reopening says so', (tester) async {
+      final s = await _start(tester);
+      s.driver.overflowsLeft = 2;
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('a long story again'),
+      );
+      expect(s.container.read(chatServiceProvider).error, ChatStrings.contextFull);
+    });
+
     testWidgets('a choice prompt renders options and tapping one sends it', (tester) async {
       final s = await _start(tester);
       await _turn(tester, s, () => s.container.read(chatServiceProvider.notifier).send('hi'));

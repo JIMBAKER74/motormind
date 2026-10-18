@@ -112,6 +112,10 @@ final class BrowserService extends Notifier<BrowserState> {
   /// A finished load with no address or title clears the old one rather than
   /// leaving a stale address under a page that is not there any more.
   void onLoadStop(String? url, String? title) {
+    // The platform view reports a finished about:blank before the first
+    // real page; counting it as loaded let the launch read run on an empty
+    // page (0 characters on the emulator, 2026-10-18).
+    if (url == null || url == 'about:blank') return;
     state = state.copyWith(url: url, title: title, loading: false);
     final pending = _loaded;
     if (pending != null && !pending.isCompleted) pending.complete();
@@ -244,7 +248,8 @@ final class BrowserService extends Notifier<BrowserState> {
       final hasListings = const ListingExtractor()
           .extract(page.text, sourceUrl: '', now: DateTime.now())
           .isNotEmpty;
-      stable = page.text.length == lastLength ? stable + 1 : 0;
+      // An empty page is not a rendered page, however long it stays empty.
+      stable = page.text.isNotEmpty && page.text.length == lastLength ? stable + 1 : 0;
       lastLength = page.text.length;
       if (hasListings || (stable >= _stableProbesNeeded && i >= _minProbesBeforeStable)) break;
     }

@@ -92,6 +92,13 @@ void main() {
     expect(container.read(advisorModelServiceProvider).value!.activeId, ModelCatalog.gemma4E2B.id);
   });
 
+  test('a model the engine cannot load is never loaded on its own', () async {
+    gateway.installed.add(ModelCatalog.qwen3Small.id);
+    await ready();
+    expect(await container.read(advisorModelServiceProvider.notifier).whenLoaded(), isNull);
+    expect(gateway.loaded, isEmpty);
+  });
+
   test('whenLoaded is null when nothing is installed', () async {
     await ready();
     expect(await container.read(advisorModelServiceProvider.notifier).whenLoaded(), isNull);
@@ -100,8 +107,11 @@ void main() {
   test('the recommended model follows free memory', () {
     expect(ModelCatalog.forFreeMemory(null), ModelCatalog.defaultModel);
     expect(ModelCatalog.forFreeMemory(4.5), ModelCatalog.gemma4E2B); // the Fold 4 at launch
-    expect(ModelCatalog.forFreeMemory(2.0), ModelCatalog.qwen3Small);
-    expect(ModelCatalog.forFreeMemory(0.5), ModelCatalog.all.last);
+    // A low-memory phone is still offered a model that loads; the window
+    // shrinks instead (a fresh install on a 4 GB emulator was offered the
+    // Qwen bundle the engine rejects).
+    expect(ModelCatalog.forFreeMemory(2.0), ModelCatalog.gemma4E2B);
+    expect(ModelCatalog.forFreeMemory(0.5), ModelCatalog.gemma4E2B);
   });
 
   test('download walks through progress to Installed and passes the stored token', () async {
@@ -165,7 +175,10 @@ void main() {
     expect(windowForFreeMemory(8.0, ceiling: 8192), 8192);
     expect(windowForFreeMemory(4.5, ceiling: 8192), 8192); // the Fold 4 at launch
     expect(windowForFreeMemory(3.5, ceiling: 8192), 4096);
-    expect(windowForFreeMemory(2.5, ceiling: 8192), 2048);
+    // Never below the floor the first turn needs, however tight memory is
+    // (a 4 GB emulator with 2.1 GB free got 2,048 and refused every turn).
+    expect(windowForFreeMemory(2.1, ceiling: 8192), minimumWindow);
+    expect(windowForFreeMemory(0.8, ceiling: 8192), minimumWindow);
     expect(windowForFreeMemory(2.5, ceiling: 1024), 1024);
   });
 
