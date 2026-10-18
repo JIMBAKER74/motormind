@@ -224,6 +224,10 @@ VA-10, then VA-8 and VA-12.
 - **VA-2.6.5** Every tile tap, widget failure and image refresh is a log line, so a
   session reads back (the owner's rule: the log says what happened, not only what broke).
   **Done.** Next: taps on other controls, and the journal in the display agent's record.
+- **VA-1.4.6** Fresh install on a low-memory device (2026-10-18): window floor 4,096;
+  launch read waits for the real page; only loadable models offered or auto-loaded; a
+  full window reopens the session and resends once. **Done.** Next: a true fresh install
+  is part of "ready" for every build (QUESTIONS C13); trim tool declarations (TQ89).
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
