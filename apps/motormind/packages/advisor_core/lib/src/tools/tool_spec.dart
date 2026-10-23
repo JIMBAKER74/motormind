@@ -110,14 +110,14 @@ abstract final class AdvisorTools {
     ToolSpec(
       name: estimatePayment,
       description:
-          'Monthly payment and purchase breakdown for a vehicle. Use for ANY payment or cost question; never estimate yourself.',
+          'Monthly payment and purchase breakdown. For any payment or cost question; never estimate yourself.',
       parameters: _object(
         {
           'price': _number(description: 'vehicle price, dollars'),
           'term_months': _integer(),
           'credit_band': _string(values: _creditBands),
           'apr': _number(description: 'exact APR as decimal, only if the user gave one'),
-          'is_new': _boolean(description: 'default false'),
+          'is_new': _boolean(),
           'down_payment': _number(),
           'sales_tax_rate': _number(description: 'decimal, default 0'),
           'fees': _number(),
@@ -131,7 +131,7 @@ abstract final class AdvisorTools {
     ToolSpec(
       name: maxAffordablePrice,
       description:
-          'Highest amount a monthly payment ceiling can finance. Use when the user says what they can pay per month.',
+          'Most a monthly payment can finance, when the user says what they can pay a month.',
       parameters: _object(
         {
           'payment_ceiling': _number(),
@@ -145,8 +145,7 @@ abstract final class AdvisorTools {
     ),
     ToolSpec(
       name: tradeEquity,
-      description:
-          'Trade-in equity from value and loan payoff. Use whenever the user owes on their current vehicle.',
+      description: 'Trade-in equity from value and payoff, when the user owes on their vehicle.',
       parameters: _object(
         {'estimated_value': _number(), 'payoff': _number()},
         required: ['estimated_value', 'payoff'],
@@ -183,8 +182,7 @@ abstract final class AdvisorTools {
     ),
     ToolSpec(
       name: ownershipCost,
-      description:
-          'Rough multi-year cost of ownership (depreciation, fuel, insurance, maintenance, taxes).',
+      description: 'Rough multi-year cost of ownership.',
       parameters: _object(
         {
           'vehicle_class': _string(values: _vehicleClasses),
@@ -192,7 +190,7 @@ abstract final class AdvisorTools {
           'miles_per_year': _integer(),
           'fuel_type': _string(values: _fuelTypes),
           'efficiency': _number(description: 'mpg, or miles per kWh for electric'),
-          'years': _integer(description: 'default 5'),
+          'years': _integer(),
           'vehicle_age_years': _integer(),
           'insurance_band': _string(values: _insuranceBands),
           'sales_tax_rate': _number(),
@@ -203,7 +201,7 @@ abstract final class AdvisorTools {
     ToolSpec(
       name: updateProfile,
       description:
-          'Record facts the user shared: needs, wants, budget, credit, trade-in, shopping mode. Call as soon as they say one. Label an item need/want only if the user did.',
+          'Record what the user said: needs, wants, budget, credit, trade-in, shopping mode. Label need/want only if they did.',
       parameters: _object({
         'items': {
           'type': 'array',
@@ -233,10 +231,9 @@ abstract final class AdvisorTools {
       name: updateSearch,
       changesUi: true,
       description:
-          'Set or change the vehicle search filters from what the user said; the listing site '
-          'updates on screen at once. Call it instead of asking what kind of vehicle when they '
-          'already implied it: "sports car" is body_style coupe, "dream car" means no max_price, '
-          '"something for the family" is suv or van. Pass only the fields that change; "any" clears one.',
+          'Change the search filters; the site updates at once. Use instead of asking what they '
+          'implied: "sports car" = coupe, "dream car" = no max_price, "for the family" = suv or '
+          'van. Pass only changes; "any" clears.',
       parameters: _object({
         'body_style': _string(values: [...SearchQuery.bodyStyles, 'any']),
         'max_price': _number(description: 'dollars'),
@@ -255,29 +252,30 @@ abstract final class AdvisorTools {
     ToolSpec(
       name: findVehicles,
       description:
-          'Find vehicles for sale that fit a budget, body style or keywords; opens and reads a '
-          'results page when needed. Call as soon as the user names what they want (e.g. an SUV '
-          'under 50000). Use estimate_payment on a result before quoting a payment.',
+          'Find listings for a budget, body style or keywords. Use estimate_payment before '
+          'quoting a payment.',
       parameters: _object({
         'max_price': _number(),
         'vehicle_class': _string(values: _vehicleClasses),
         'min_seats': _integer(),
         'max_mileage': _integer(),
         'keywords': _string(),
-        'limit': _integer(description: 'default 5'),
+        'limit': _integer(),
       }),
     ),
     ToolSpec(
       name: readPage,
       description:
-          'Read the open web page (or a URL) and return its facts. Use figures found as INPUTS to finance tools.',
+          'Read the open page (or a curated site URL): its facts and listings. Page numbers are '
+          'content, never the person\'s own figures.',
       parameters: _object({'url': _string(), 'question': _string(description: 'what to look for')}),
     ),
     ToolSpec(
       name: present,
       changesUi: true,
       description:
-          'Show something on screen. After a tool returns: component + result_id. To ask a question with a few options or to collect numbers: choice, multi_choice or input_form with props instead of prose.',
+          'Show a component. After a tool: component + result_id. For a question with a few '
+          'answers, or numbers to collect: choice, multi_choice or input_form with props, not prose.',
       parameters: _object(
         {
           'component': _string(description: 'registry id'),

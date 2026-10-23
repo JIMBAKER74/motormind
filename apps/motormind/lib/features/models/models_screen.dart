@@ -5,6 +5,7 @@ import '../../app/widgets/compact_chip.dart';
 import '../../services/advisor_model_service.dart';
 import '../../services/token_store.dart';
 import '../advisor/display_agent.dart';
+import '../chat/turn_stats.dart';
 import 'model_catalog.dart';
 
 /// Where the person picks, downloads and removes on-device models, enters a
@@ -59,6 +60,7 @@ class ModelsScreen extends ConsumerWidget {
                   .read(displayAgentModeProvider.notifier)
                   .set(v ? DisplayAgentMode.model : DisplayAgentMode.rules),
             ),
+            const _TurnStatsSection(),
           ],
         ),
         _ => const Center(child: CircularProgressIndicator()),
@@ -257,6 +259,38 @@ class _ModelCard extends ConsumerWidget {
             },
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// This session's turns, timed: what started each, when the first word
+/// came, how long it took, which tools ran. On this screen so the numbers
+/// can be read on the phone, without a cable or a log.
+class _TurnStatsSection extends ConsumerWidget {
+  const _TurnStatsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final turns = ref.watch(turnStatsProvider);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 24),
+      child: Column(
+        key: const Key('turn-stats'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('This session\'s turns', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          if (turns.isEmpty)
+            Text('None yet.', style: theme.textTheme.bodySmall)
+          else
+            for (final t in turns)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(t.describe(), style: theme.textTheme.bodySmall),
+              ),
+        ],
       ),
     );
   }

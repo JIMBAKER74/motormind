@@ -11,6 +11,7 @@ import '../chat/cards/card_shell.dart';
 import '../chat/cards/formatting.dart';
 import '../chat/chat_service.dart';
 import '../chat/chat_strings.dart';
+import '../chat/turn_stats.dart';
 import 'listing_cache.dart';
 import 'listing_signals.dart';
 
@@ -99,8 +100,13 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
                   unawaited(ref.read(browserProvider.notifier).open(url));
                 }
               },
-              onAsk: () =>
-                  ref.read(chatServiceProvider.notifier).send(ChatStrings.monthlyCostOf(l.title)),
+              onAsk: () => ref
+                  .read(chatServiceProvider.notifier)
+                  .send(
+                    ChatStrings.monthlyCostOf(l.title),
+                    trigger: TurnTrigger.tileCost,
+                    detail: 'tile ${listings.indexOf(l) + 1}',
+                  ),
             ),
       ],
     );

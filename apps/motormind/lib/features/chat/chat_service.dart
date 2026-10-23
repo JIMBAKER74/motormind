@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/advisor_model_service.dart';
 import '../../services/log.dart';
 import '../advisor/advisor_surface.dart';
+import '../advisor/display_agent.dart';
 import '../advisor/stage.dart';
 import '../browser/browser_service.dart';
 import '../listings/listing_signals.dart';
@@ -18,6 +19,7 @@ import 'edge_ai_chat_driver.dart';
 import 'external_tools.dart';
 import 'prompt_assets.dart';
 import 'starters.dart';
+import 'turn_stats.dart';
 
 export 'chat_state.dart';
 
@@ -131,11 +133,24 @@ final class ChatService extends Notifier<ChatState> {
 
   /// [filtersCardComing] is set by [choose] when the filters card is about to
   /// join the conversation, so the first turn already knows it is on screen.
-  Future<void> send(String text, {bool filtersCardComing = false}) async {
-    return _send(text, filtersCardComing: filtersCardComing);
+  /// [trigger] and [detail] say what started the turn, for its stats (an
+  /// option id or a tile, never the person's words).
+  Future<void> send(
+    String text, {
+    bool filtersCardComing = false,
+    TurnTrigger trigger = TurnTrigger.typed,
+    String detail = '',
+  }) async {
+    return _send(text, filtersCardComing: filtersCardComing, trigger: trigger, detail: detail);
   }
 
-  Future<void> _send(String text, {bool filtersCardComing = false, bool reopened = false}) async {
+  Future<void> _send(
+    String text, {
+    bool filtersCardComing = false,
+    bool reopened = false,
+    TurnTrigger trigger = TurnTrigger.typed,
+    String detail = '',
+  }) async {
     if (text.trim().isEmpty) return;
     // Motormind is always on: a message typed before the conversation has
     // started (the model still loading) starts it and then goes through,
@@ -151,6 +166,8 @@ final class ChatService extends Notifier<ChatState> {
       text,
       filtersCardComing: filtersCardComing,
       reopened: reopened,
+      trigger: trigger,
+      detail: detail,
     );
   }
 
@@ -159,8 +176,15 @@ final class ChatService extends Notifier<ChatState> {
     String text, {
     required bool filtersCardComing,
     bool reopened = false,
+    TurnTrigger trigger = TurnTrigger.typed,
+    String detail = '',
   }) async {
     var reopen = false;
+    final clock = Stopwatch()..start();
+    int? firstTextMs;
+    var pieces = 0;
+    var failed = false;
+    final tools = <(String, int)>[];
     final userMsg = ChatMessage(role: MessageRole.user, text: text.trim());
     var reply = const ChatMessage(role: MessageRole.motormind, text: '', streaming: true);
     // The obvious filters in a sentence ("a Honda sports car under 40k") apply
@@ -188,6 +212,8 @@ final class ChatService extends Notifier<ChatState> {
               'site $siteName. Do not ask what kind or what price; they can tap or tell you.]'
         : '\n\n[Already set on the filter card: ${search.query.describe()} on $siteName; '
               '${search.lastCount ?? 0} listings read. Do not ask about these again.]';
+    final prompt = text.trim() + searchContext + signalContext;
+    final promptChars = prompt.length;
     state = state.copyWith(
       timeline: [...state.timeline, MessageEntry(userMsg), MessageEntry(reply)],
       busy: true,
@@ -217,15 +243,18 @@ final class ChatService extends Notifier<ChatState> {
 
       arm();
       logDev('turn start');
-      await for (final e in pipeline.run(text.trim() + searchContext + signalContext)) {
+      await for (final e in pipeline.run(prompt)) {
         arm();
         switch (e) {
           case TextDelta(:final text):
+            firstTextMs ??= clock.elapsedMilliseconds;
+            pieces++;
             updateReply(reply.copyWith(text: reply.text + text));
           case ThinkingDelta():
             break;
           case ToolStarted(:final name):
             logDev('tool $name');
+            tools.add((name, clock.elapsedMilliseconds));
             state = state.copyWith(activeTool: name);
           case ToolFinished():
             state = state.copyWith(clearActiveTool: true);
@@ -304,6 +333,7 @@ final class ChatService extends Notifier<ChatState> {
       }
     } on Exception catch (e) {
       logDev('turn failed: $e');
+      failed = true;
       if (!reopened && _contextOverflow.hasMatch(e.toString())) {
         // The conversation outgrew the window. The person should not have
         // to know what a window is: open a fresh session that keeps the
@@ -319,6 +349,22 @@ final class ChatService extends Notifier<ChatState> {
     } finally {
       logDev('turn done');
       state = state.copyWith(busy: false, clearActiveTool: true, clearTurnStartedAt: true);
+      ref
+          .read(turnStatsProvider.notifier)
+          .add(
+            TurnStats(
+              trigger: reopened ? TurnTrigger.retry : trigger,
+              detail: detail,
+              startedAt: DateTime.now().subtract(clock.elapsed),
+              firstTextMs: firstTextMs,
+              totalMs: clock.elapsedMilliseconds,
+              promptChars: promptChars,
+              outputPieces: pieces,
+              tools: tools,
+              displayAgentOn: ref.read(displayAgentModeProvider) == DisplayAgentMode.model,
+              failed: failed,
+            ),
+          );
     }
     if (!reopen) return;
     // The failed exchange leaves the transcript; the retry writes its own.
@@ -330,7 +376,13 @@ final class ChatService extends Notifier<ChatState> {
       state = state.copyWith(error: ChatStrings.contextFull);
       return;
     }
-    await _send(text, filtersCardComing: filtersCardComing, reopened: true);
+    await _send(
+      text,
+      filtersCardComing: filtersCardComing,
+      reopened: true,
+      trigger: trigger,
+      detail: detail,
+    );
   }
 
   /// The listings currently on the stage.
@@ -477,7 +529,12 @@ final class ChatService extends Notifier<ChatState> {
       // The card is app-owned: it tracks the search state.
       // send() is synchronous up to its first await, so the card lands after
       // the sentence and before the reply bubble fills in.
-      final turn = send(withExtra(sentence), filtersCardComing: true);
+      final turn = send(
+        withExtra(sentence),
+        filtersCardComing: true,
+        trigger: TurnTrigger.choice,
+        detail: id,
+      );
       if (!state.timeline.any(
         (e) => e is ComponentEntry && e.shown.request.component.id == 'search_filters',
       )) {
@@ -499,9 +556,9 @@ final class ChatService extends Notifier<ChatState> {
     if (id.startsWith(Starters.kindPrefix)) {
       final style = SearchQuery.normalizeBodyStyle(id.substring(Starters.kindPrefix.length));
       if (style != null) ref.read(searchProvider.notifier).update({'body_style': style});
-      return send(withExtra('I am looking at a $label.'));
+      return send(withExtra('I am looking at a $label.'), trigger: TurnTrigger.choice, detail: id);
     }
-    return send(withExtra(label));
+    return send(withExtra(label), trigger: TurnTrigger.choice, detail: id);
   }
 
   BuyerProfile get profile => _pipeline?.profile ?? const BuyerProfile();
