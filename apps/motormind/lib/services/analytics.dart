@@ -1,13 +1,11 @@
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../firebase_options.dart';
 import 'log.dart';
 
 /// Compile-time switch (backlog VA-7.1.3). Demo builds pass nothing and ship the
-/// no-op; the store flavor passes `--dart-define=MOTORMIND_ANALYTICS=true`
-/// after `flutterfire configure` has generated the platform config.
+/// no-op. A store flavor would pass `--dart-define=MOTORMIND_ANALYTICS=true`
+/// and bind a real backend here; none is bundled with the demo, so no vendor
+/// configuration or API key lives in this repository.
 const bool kAnalyticsEnabled = bool.fromEnvironment('MOTORMIND_ANALYTICS');
 
 /// Anonymous event counts only. Parameters are restricted to a short allow
@@ -36,9 +34,9 @@ final class NoopAnalytics implements Analytics {
   Future<void> event(String name, {Map<String, Object>? params}) async {}
 }
 
-final class FirebaseAnalyticsService implements Analytics {
-  FirebaseAnalytics? _fa;
-
+/// Parameter filtering shared by any real backend. Kept separate from the
+/// vendor SDK so the privacy rule is testable without one.
+abstract base class AllowListAnalytics implements Analytics {
   static const Set<String> allowedParams = {
     'tool',
     'model_id',
@@ -50,26 +48,9 @@ final class FirebaseAnalyticsService implements Analytics {
     'to',
   };
 
-  @override
-  Future<void> init() async {
-    try {
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-      _fa = FirebaseAnalytics.instance;
-    } on Exception catch (e) {
-      // Analytics must never keep the app from starting.
-      logDev('analytics unavailable: $e');
-    }
-  }
-
-  @override
-  Future<void> screen(String name) async {
-    await _fa?.logScreenView(screenName: name);
-  }
-
-  @override
-  Future<void> event(String name, {Map<String, Object>? params}) async {
-    // Numbers are refused outright: a financial value must never reach
-    // analytics, and a bucketed string is the only allowed shape.
+  /// Numbers are refused outright: a financial value must never reach
+  /// analytics, and a bucketed string is the only allowed shape.
+  Map<String, Object> filter(String name, Map<String, Object>? params) {
     final safe = <String, Object>{
       for (final e in (params ?? const {}).entries)
         if (allowedParams.contains(e.key) && e.value is! num) e.key: e.value,
@@ -77,10 +58,8 @@ final class FirebaseAnalyticsService implements Analytics {
     if (params != null && safe.length != params.length) {
       logDev('analytics: dropped disallowed params from "$name"');
     }
-    await _fa?.logEvent(name: name, parameters: safe);
+    return safe;
   }
 }
 
-final analyticsProvider = Provider<Analytics>(
-  (ref) => kAnalyticsEnabled ? FirebaseAnalyticsService() : NoopAnalytics(),
-);
+final analyticsProvider = Provider<Analytics>((ref) => NoopAnalytics());

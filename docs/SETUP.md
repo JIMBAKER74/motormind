@@ -151,39 +151,9 @@ mirror), the `hf` CLI is installed via pipx:
 hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ~/models/motormind
 ```
 
-## 8. Firebase (store flavor only)
+## 8. Analytics (no vendor in the demo)
 
-Installed 2026-10-04: Firebase CLI 15.32.1 via Homebrew (`/opt/homebrew/bin/firebase`) and
-FlutterFire CLI 1.4.1 (`~/.pub-cache/bin`, now on PATH via `~/.zshrc`). The "Firebase CLI
-not installed" message came from FlutterFire because the CLI genuinely was not installed;
-an earlier `npm install -g` would have needed `sudo` on this Mac because `/usr/local/lib` is
-root-owned.
-
-One-time, interactive (needs your Google account in a browser):
-
-```bash
-firebase login
-```
-
-Create a project named `motormind` in the Firebase console (or `firebase projects:create
-motormind-<suffix>`), then generate the platform config into the app:
-
-```bash
-cd "/Users/sirisdev/Documents/personal work/demo-projects/motormind/edge_ai_demo/apps/motormind" && flutterfire configure --project=<your-project-id> --platforms=android,ios --android-package-name=com.sirisdevelopment.motormind --ios-bundle-id=com.sirisdevelopment.motormind
-```
-
-Done on 2026-10-05 for Android against project `motormind-a5a2b` (account
-sirisdevelopment@gmail.com): `lib/firebase_options.dart`, `android/app/google-services.json`
-and `ios/Runner/GoogleService-Info.plist` exist and are committed (project identifiers, not
-secrets; the Android build needs the JSON present because FlutterFire added the
-`google-services` Gradle plugin). The iOS half of `flutterfire configure` fails until Xcode
-is installed (it needs the `xcodeproj` Ruby gem); rerun with `--platforms=ios` afterwards.
-
-Analytics is compiled in only when the build passes the flag; the demo flavor ships a no-op:
-
-```bash
-flutter run --dart-define=MOTORMIND_ANALYTICS=true
-```
+The demo ships `NoopAnalytics`. There is no Firebase project, no `google-services.json`, no `firebase_options.dart`, and no API key in this repository; the earlier Firebase Analytics wiring was removed on 2026-10-23 and the project it pointed at was deleted. A store flavor would bind a backend behind `AllowListAnalytics` and pass `--dart-define=MOTORMIND_ANALYTICS=true`; see backlog VA-7.1.3.
 
 ## Release signing (Android)
 
