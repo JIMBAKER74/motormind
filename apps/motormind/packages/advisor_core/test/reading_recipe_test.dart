@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:advisor_core/advisor_core.dart';
-import 'package:html/dom.dart' show Element;
+import 'package:html/dom.dart' show Document, Element;
 import 'package:html/parser.dart' show parse;
 import 'package:test/test.dart';
 
@@ -75,6 +75,89 @@ void main() {
               'copy the asset over the fixture',
         );
       }
+    });
+  });
+
+  group('page data', () {
+    // EchoPark ships its whole results page as JSON inside the page; the
+    // recipe's data rule reads every car from it, photos included, with no
+    // scrolling. The visible markup holds one card here, as on the real page.
+    final echopark = _recipe(_read(_fixturePath('echopark')));
+    RecipeResult readData(String html) => const RecipeReader().read(
+      html,
+      echopark,
+      sourceUrl: 'https://www.echopark.com/used-cars',
+      now: now,
+    );
+
+    test('every car comes from the page data, with photos, VIN links and the total', () {
+      final r = readData(_read('test/fixtures/echopark_results_data_synthetic.html'));
+      expect(r.check.ok, isTrue, reason: r.check.toString());
+      expect(r.listings, hasLength(4));
+      expect(r.check.pageTotal, 347);
+      final bmw = r.listings.first;
+      expect(bmw.title, '2023 BMW 5 Series 530i xDrive');
+      expect(bmw.make, 'BMW');
+      expect(bmw.model, '5 Series');
+      expect(bmw.price, 31296);
+      expect(bmw.mileage, 35850);
+      expect(bmw.imageUrl, startsWith('https://content.homenetiol.com/'));
+      expect(bmw.detailUrl, 'https://www.echopark.com/car/WBA13BJ06PWY18150');
+      // A car with no photos in the data is still a listing, without one.
+      expect(r.listings.last.imageUrl, isNull);
+      expect(r.check.withImage, 3);
+    });
+
+    test('no data block falls back to the visible cards', () {
+      String card(String name, String price) =>
+          '<div class="vehicleCardPaper"><h2 class="vehicleInfoName">$name</h2>'
+          '<span data-testid="vehicle-price">$price</span></div>';
+      final r = readData(
+        '<html><body>${card('2021 Kia Sorento SX', r'$19,422')}'
+        '${card('2024 Nissan LEAF S', r'$15,722')}${card('2020 Ford F-150 XLT', r'$27,000')}'
+        '</body></html>',
+      );
+      expect(r.listings.map((l) => l.title), [
+        '2021 Kia Sorento SX',
+        '2024 Nissan LEAF S',
+        '2020 Ford F-150 XLT',
+      ]);
+      // No photos in the markup: reported, not a failure (an untouched page
+      // has one photo in 22; the read is still right).
+      expect(r.check.ok, isTrue, reason: r.check.toString());
+      expect(r.check.withImage, 0);
+    });
+
+    test('a data block that is not JSON, or has no list at the path, is ignored', () {
+      const rule = DataRule(script: 'script#d', items: 'a.b', fields: {'title': 't'});
+      Document doc(String body) => parse('<script id="d">$body</script>');
+      expect(rule.read(doc('not json'), sourceUrl: 'https://x/', now: now, max: 5), isNull);
+      expect(rule.read(doc('{"a":{"b":7}}'), sourceUrl: 'https://x/', now: now, max: 5), isNull);
+      final ok = rule.read(
+        doc('{"a":{"b":[{"t":"2021 Honda Civic"},{"t":7},"junk",{"t":""}]}}'),
+        sourceUrl: 'https://x/',
+        now: now,
+        max: 5,
+      );
+      // A number becomes text; a non-object and an empty title are skipped.
+      expect(ok!.listings.map((l) => l.title), ['2021 Honda Civic', '7']);
+    });
+
+    test('only https photos are kept; a link with a missing key is left out', () {
+      const rule = DataRule(
+        script: 'script#d',
+        items: 'cars',
+        fields: {'title': 't', 'image': 'img'},
+        link: '/car/{vin}',
+      );
+      final r = rule.read(
+        parse('<script id="d">{"cars":[{"t":"2022 Kia EV6","img":"http://x/a.jpg"}]}</script>'),
+        sourceUrl: 'https://www.echopark.com/used-cars',
+        now: now,
+        max: 5,
+      )!;
+      expect(r.listings.single.imageUrl, isNull);
+      expect(r.listings.single.detailUrl, isNull);
     });
   });
 

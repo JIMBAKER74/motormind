@@ -11,6 +11,7 @@ import '../chat/cards/card_shell.dart';
 import '../chat/cards/formatting.dart';
 import '../chat/chat_service.dart';
 import '../chat/chat_strings.dart';
+import 'listing_cache.dart';
 import 'listing_signals.dart';
 
 /// The Cards stage's listing card: compact tiles with an image, the facts
@@ -39,6 +40,7 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
     final signals = ref.watch(listingSignalsProvider);
     final signalsNotifier = ref.read(listingSignalsProvider.notifier);
     final bigPhoto = ref.watch(bigPhotoProvider);
+    final photo = ref.watch(listingPhotoProvider);
     final sites = {for (final l in listings) BrowserService.siteIdFor(l.sourceUrl) ?? 'web'};
     return CardShell(
       id: 'vehicle_card',
@@ -74,6 +76,7 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
               signalKey: key,
               open: _open == key,
               bigPhoto: bigPhoto == key,
+              photo: photo,
               viewed: signals.viewed.contains(key),
               liked: signals.liked.contains(key),
               onTap: () {
@@ -123,6 +126,7 @@ class _ListingTile extends StatelessWidget {
     required this.onTap,
     required this.bigPhoto,
     required this.onBigPhotoTap,
+    required this.photo,
     required this.onLike,
     required this.onDismiss,
     required this.onOpenSite,
@@ -141,6 +145,9 @@ class _ListingTile extends StatelessWidget {
 
   /// Tapping the big photo puts it away.
   final VoidCallback onBigPhotoTap;
+
+  /// Builds a photo from its address (disk-cached in the app).
+  final Widget Function(String url, {double? height}) photo;
   final VoidCallback onLike;
   final VoidCallback onDismiss;
   final VoidCallback onOpenSite;
@@ -177,12 +184,7 @@ class _ListingTile extends StatelessWidget {
                     width: _thumbWidth,
                     height: _thumbHeight,
                     child: image != null && image.startsWith('https://')
-                        ? Image.network(
-                            image,
-                            fit: BoxFit.cover,
-                            cacheWidth: (_thumbWidth * 2).round(),
-                            errorBuilder: (_, _, _) => const _Placeholder(),
-                          )
+                        ? photo(image)
                         : const _Placeholder(),
                   ),
                 ),
@@ -224,13 +226,7 @@ class _ListingTile extends StatelessWidget {
                   onTap: onBigPhotoTap,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      image,
-                      fit: BoxFit.cover,
-                      height: _bigPhotoHeight,
-                      errorBuilder: (_, _, _) =>
-                          const SizedBox(height: _bigPhotoHeight, child: _Placeholder()),
-                    ),
+                    child: photo(image, height: _bigPhotoHeight),
                   ),
                 ),
               ),

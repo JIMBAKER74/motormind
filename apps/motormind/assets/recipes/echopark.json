@@ -1,9 +1,25 @@
 {
   "siteId": "echopark",
-  "version": 2,
+  "version": 3,
   "status": "verified",
-  "note": "Version 2, 2026-10-12, from a page captured on the owner's phone (test/fixtures/echopark_results_captured.html) and the structure summary that tool/recipe_structure.dart printed for it: the card family is div.vehicleCardPaper (one /car link and one image each), the name is an h2, the price carries a data-testid, the page total sits in data-testid=inventoryCount beside the h1. Version 1 was guessed from rendered text and matched 66 elements with no title. Images are lazy (a v-lazy carousel per card): a page captured before scrolling has them on the first screen only, so the image fraction is reported, not required (0.0): the app no longer scrolls, and the first read of an untouched page has one image of 22 (emulator, 2026-10-18); the app's paced scroll is what makes the rest exist before a read. The year is a span of its own in the details row, in front of the mileage; the name heading has no year.",
+  "note": "Version 3, 2026-10-22: reads the inventory EchoPark ships inside the page (script#__JSS_STATE__, sitecore.context.flux-store.srp.srpVehiclesData), which carries every car on the page with its photos, VIN, miles and price, whether or not the person has scrolled to it. Found by reading the page already open in the app's web pane over the debug build's DevTools socket: 22 cards, one photo in the markup, 154 photo addresses in the data. The visible-card rules below are version 2's, kept as the fallback. Version 2, 2026-10-12, from a page captured on the owner's phone (test/fixtures/echopark_results_captured.html) and the structure summary that tool/recipe_structure.dart printed for it: the card family is div.vehicleCardPaper (one /car link and one image each), the name is an h2, the price carries a data-testid, the page total sits in data-testid=inventoryCount beside the h1. Version 1 was guessed from rendered text and matched 66 elements with no title. Images are lazy (a v-lazy carousel per card): a page captured before scrolling has them on the first screen only, so the image fraction is reported, not required (0.0): the app no longer scrolls, and the first read of an untouched page has one image of 22 (emulator, 2026-10-18); the app's paced scroll is what makes the rest exist before a read. The year is a span of its own in the details row, in front of the mileage; the name heading has no year.",
   "card": "div.vehicleCardPaper",
+  "data": {
+    "script": "script#__JSS_STATE__",
+    "items": "sitecore.context.flux-store.srp.srpVehiclesData.items",
+    "total": "sitecore.context.flux-store.srp.srpVehiclesData.resultCount",
+    "fields": {
+      "year": "year",
+      "make": "make",
+      "model": "model",
+      "trim": "trim",
+      "price": "sellingPrice",
+      "mileage": "miles",
+      "image": "images.0",
+      "id": "vin"
+    },
+    "link": "/car/{vin}"
+  },
   "fields": {
     "title": {
       "selector": "h2.vehicleInfoName"

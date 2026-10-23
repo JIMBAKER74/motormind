@@ -7,6 +7,7 @@ import 'package:motormind/app/app.dart';
 import 'package:motormind/app/prefs.dart';
 import 'package:motormind/features/advisor/stage_view.dart';
 import 'package:motormind/features/disclosures/disclosures_notifier.dart';
+import 'package:motormind/features/listings/listing_cache.dart';
 import 'package:motormind/features/search/search_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 Future<Widget> motormindApp({
   int? acknowledgedVersion,
   PageReader? pageReader,
+  ListingCache? listingCache,
   List<Override> overrides = const [],
 }) async {
   SharedPreferences.setMockInitialValues({
@@ -32,6 +34,12 @@ Future<Widget> motormindApp({
         () => const SizedBox.expand(key: Key('browser-pane')),
       ),
       pageReaderProvider.overrideWithValue(pageReader ?? emptyPageReader),
+      // No disk in widget tests: photos are keyed boxes, and remembered
+      // listings live in a fresh temp directory per app.
+      listingPhotoProvider.overrideWithValue(
+        (url, {height}) => SizedBox(key: Key('photo-$url'), height: height),
+      ),
+      listingCacheProvider.overrideWithValue(listingCache ?? MemoryListingCache()),
       ...overrides,
     ],
     child: const MotormindApp(),

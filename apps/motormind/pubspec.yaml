@@ -34,6 +34,11 @@ dependencies:
   # The web pane (flutter_inappwebview does not build on AGP 9)
   webview_flutter: ^4.14.1
 
+  # Listing photos cached on disk, so a second launch shows them at once and
+  # offline. Image.network keeps only an in-memory cache; a hand-rolled file
+  # cache was the alternative and would duplicate what this package does.
+  cached_network_image: ^4.0.5
+
   # Analytics: linked in every build, inert unless MOTORMIND_ANALYTICS=true
   firebase_core: ^4.15.0
   firebase_analytics: ^12.6.0

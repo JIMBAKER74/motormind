@@ -8,6 +8,7 @@ import '../advisor/stage.dart';
 import '../browser/browser_service.dart';
 import '../chat/chat_state.dart';
 import '../chat/chat_strings.dart';
+import '../listings/listing_cache.dart';
 
 /// The live search: the filters as they stand, where they apply, and what the
 /// last read found. A filter applies the moment it changes; there is no
@@ -98,9 +99,32 @@ final class SearchService extends Notifier<SearchState> {
   /// Result ids for the stage; a counter, not a clock, so tests are stable.
   int _resultSeq = 0;
 
+  /// True while the stage shows the listings remembered from an earlier
+  /// launch and no fresh read has replaced them.
+  bool _showingRemembered = false;
+
+  /// Shows the listings remembered from the last launch, each tile with its
+  /// age, until the fresh read replaces them; nothing when there are none or
+  /// the fresh read finished first.
+  Future<void> _showRemembered() async {
+    final remembered = await ref.read(listingCacheProvider).load(state.siteId);
+    if (remembered.isEmpty || state.lastCount != null || !ref.mounted) return;
+    ref.read(listingStoreProvider).addAll(remembered);
+    _showingRemembered = true;
+    _showResults(
+      remembered.take(stageListingLimit).toList(),
+      remembered.first.sourceUrl,
+      state.query,
+    );
+    logDev('remembered: ${remembered.length} listings shown from the last launch');
+  }
+
   @override
   SearchState build() {
     ref.onDispose(() => _debounce?.cancel());
+    // Last launch's cards first, so the stage is never empty while the page
+    // loads; the fresh read below replaces them.
+    Future<void>.microtask(_showRemembered);
     // Cards first: the site's own first page of inventory is read once at
     // launch and shown as tiles, before anything is asked (design notes,
     // DD-Q21; the owner's Q71). It is the one page the pane would open
@@ -192,16 +216,31 @@ final class SearchService extends Notifier<SearchState> {
     final gen = ++_generation;
     final q = state.query;
     final url = site.urlFor(q);
+    // The stage keeps the cards while the page is read; it shows the page
+    // as a labeled strip above them (the stage view decides from
+    // `applying`). Flipping to the full page here took the screen from the
+    // cards on every search (owner, 2026-10-22).
     state = state.copyWith(applying: true, clearNote: true);
-    ref.read(stageProvider.notifier).showWeb();
     try {
       final extract = await ref.read(pageReaderProvider)(url: url);
       if (gen != _generation) return; // superseded
-      final store = ref.read(listingStoreProvider)..addAll(extract.listings);
+      final cache = ref.read(listingCacheProvider);
+      final siteId = state.siteId;
+      // A photo seen on an earlier launch is kept when this read has none.
+      final fresh = ListingCache.withRememberedPhotos(extract.listings, await cache.load(siteId));
+      if (gen != _generation) return;
+      final store = ref.read(listingStoreProvider)
+        ..addAll(fresh)
+        ..mergeImages(fresh);
+      unawaited(cache.save(siteId, fresh));
       // Every listing that matched goes on the stage (the card scrolls); the
       // model's own tool keeps its small limit for the context's sake.
       final results = store.searchQuery(q, limit: stageListingLimit);
       state = state.copyWith(applying: false, lastCount: results.length);
+      // A failed or empty first read leaves the remembered cards in place
+      // rather than replacing them with "no listings".
+      if (results.isEmpty && _showingRemembered) return;
+      _showingRemembered = false;
       _showResults(results, extract.url, q);
     } on PageChallengeException catch (e) {
       if (gen == _generation) state = state.copyWith(applying: false, note: e.message);
