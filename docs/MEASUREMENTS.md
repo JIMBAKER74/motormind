@@ -95,6 +95,24 @@ absorbs them without a trace, so the owner's repeated taps on the disabled input
 nothing to read. That is the gap the "dead taps are signals" rule (design notes, DD-R42)
 closes from the app's side: the app records them because the log never will.
 
+### Per-trigger turn timing (instrumented 2026-10-22, not yet run on the Fold)
+
+Every turn now records what started it and its timing from the person's side; the
+session's list is on the Models screen and each turn is one `turn stats:` log line. The
+table this section will hold, once a session on the Fold has run with the second session
+off and then on:
+
+| Trigger | First word | Total | Tools | Output rate | Prompt |
+|---|---|---|---|---|---|
+| typed message | | | | | |
+| opening choice | | | | | |
+| tile's Monthly cost? | | | | | |
+| compare cue (quiet) | | | | | |
+
+Two changes made before measuring, so the numbers are of the current build: the tool
+declarations were trimmed from about 1,700 to 1,570 tokens, and the display agent asks
+only when what it sees changed, one decision at a time, at least ten seconds apart.
+
 ### What the run found, and what it changed
 
 Numbers were the aim; the run also found five defects, each fixed the same night:

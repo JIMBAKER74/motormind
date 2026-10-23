@@ -228,6 +228,18 @@ VA-10, then VA-8 and VA-12.
   launch read waits for the real page; only loadable models offered or auto-loaded; a
   full window reopens the session and resends once. **Done.** Next: a true fresh install
   is part of "ready" for every build (QUESTIONS C13); trim tool declarations (TQ89).
+- **VA-11.2.13** Photos from the page's own data (2026-10-22): a recipe may carry a data
+  rule; EchoPark v3 reads `__JSS_STATE__`, every car with its photos. **Done.** Open:
+  report which path was used (TQ91).
+- **VA-11.2.14** Remembered listings and disk-cached photos across launches. **Done.**
+  Open: an age limit (Q93) and a way to clear them (TQ93).
+- **VA-1.4.7** Stats for every turn by trigger, in the log and on the Models screen.
+  **Done.** Open: the Fold measurements, display agent off and on (Q95).
+- **VA-1.4.3** (see above) Display decisions coalesce. **Done in part:** asked only when
+  the state it sees changed, one at a time, ten seconds apart. Not yet measured on a phone.
+- **VA-3.4.1** The model chooses a component from a cue: opening a second listing tells
+  the model which two; it may present `vehicle_compare`. **Done.** Open: how often a 2B
+  model takes the cue (C17).
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
