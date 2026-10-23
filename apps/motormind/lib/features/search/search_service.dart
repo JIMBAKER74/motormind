@@ -255,7 +255,13 @@ final class SearchService extends Notifier<SearchState> {
   /// Puts the matches on the stage as a listings card. The card is a tool
   /// result like any other, so the numbers on it came from the page, not
   /// from the model.
-  void _showResults(List<VehicleListing> results, String source, SearchQuery q) {
+  void _showResults(List<VehicleListing> found, String source, SearchQuery q) {
+    // Ids the model can name, unique within this card (L1, L2, ...): the
+    // listings come from several reads, whose own ids repeat.
+    final results = [
+      for (var i = 0; i < found.length; i++)
+        VehicleListing.fromJson({...found[i].toJson(), 'id': 'L${i + 1}'}),
+    ];
     final result = ToolResult(
       id: 'search-${++_resultSeq}',
       tool: AdvisorTools.findVehicles,

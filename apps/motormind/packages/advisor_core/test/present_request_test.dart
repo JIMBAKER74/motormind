@@ -195,4 +195,32 @@ void main() {
       expect(bad.errors.single, contains('highlights'));
     });
   });
+
+  group('vehicle_compare', () {
+    test('takes a listings result and two or three listing ids', () {
+      final ok = PresentRequest.validate({
+        'component': 'vehicle_compare',
+        'result_id': 'search-2',
+        'props': {
+          'ids': ['L1', 'L4'],
+        },
+      }, resultTool: 'find_vehicles');
+      expect(ok.errors, isEmpty);
+      expect(ok.request!.resultId, 'search-2');
+      expect(ok.request!.props['ids'], ['L1', 'L4']);
+    });
+
+    test('refuses one id, four ids, or no result', () {
+      List<String> errors(Object? ids, {String? tool = 'find_vehicles'}) =>
+          PresentRequest.validate({
+            'component': 'vehicle_compare',
+            'result_id': 'search-2',
+            'props': {'ids': ids},
+          }, resultTool: tool).errors;
+      expect(errors(['L1']).single, contains('2 to $maxCompared'));
+      expect(errors(['L1', 'L2', 'L3', 'L4']).single, contains('2 to $maxCompared'));
+      expect(errors('L1').single, contains('list of listing ids'));
+      expect(errors(['L1', 'L2'], tool: null).single, contains('does not match'));
+    });
+  });
 }

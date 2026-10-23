@@ -49,7 +49,9 @@ class UiComponent {
 
   /// Returns problems with `props`, or an empty list. Must not change the
   /// props: anything the app trims rather than refuses is trimmed by
-  /// [PresentRequest.validate] on its own copy.
+  /// [PresentRequest.validate] on its own copy. A result component with a
+  /// validator takes props as well as its result (which listings to
+  /// compare); one without takes none.
   final List<String> Function(Map<String, Object?> props)? validateProps;
 
   /// True for components the app shows on its own (bound to app state). They
@@ -98,6 +100,20 @@ List<String> _validateOptions(Map<String, Object?> props, {required int max}) {
     // same reason extra options are dropped.
   }
   return errors;
+}
+
+/// Most listings a compare shows; a fourth column does not fit a phone.
+const int maxCompared = 3;
+
+List<String> _validateCompareIds(Map<String, Object?> props) {
+  final ids = props['ids'];
+  if (ids is! List || ids.any((i) => i is! String)) {
+    return ['props.ids must be a list of listing ids'];
+  }
+  if (ids.length < 2 || ids.length > maxCompared) {
+    return ['props.ids must name 2 to $maxCompared listings'];
+  }
+  return const [];
 }
 
 /// Field types `input_form` can render.
@@ -191,12 +207,14 @@ abstract final class ComponentRegistry {
     acceptsTools: {'find_vehicles', 'read_page'},
   );
 
-  /// Two or three listings compared, from `find_vehicles`.
-  static const vehicleCompare = UiComponent(
+  /// Two or three listings side by side, from a listings result; `props.ids`
+  /// names them by listing id. The model chooses it, for instance when the
+  /// app says the person opened two listings in a row.
+  static final vehicleCompare = UiComponent(
     id: 'vehicle_compare',
-    description: '2–3 listings compared.',
-    acceptsTools: {'find_vehicles'},
-    defaultSurface: SurfaceState.fullscreen,
+    description: '2–3 listings side by side; props {ids:[listing ids]} from a listings result.',
+    acceptsTools: const {'find_vehicles'},
+    validateProps: _validateCompareIds,
   );
 
   /// Facts read from a web page by `read_page`.
@@ -325,8 +343,9 @@ final class PresentRequest {
   /// Names, never values, so the guard is not involved.
   final List<String> highlights;
 
-  /// Model-supplied props for interaction components, already validated and
-  /// trimmed to what the component renders; empty for result components.
+  /// Model-supplied props, already validated and trimmed to what the
+  /// component renders: an interaction component's question and options, a
+  /// compare's listing ids; empty for components that take none.
   final Map<String, Object?> props;
 
   /// Validates the model's arguments against the registry and the tool that
@@ -349,9 +368,11 @@ final class PresentRequest {
     }
 
     final resultId = args['result_id']?.toString();
-    final props = component.isInteraction ? _propsOf(component, args['props']) : null;
-    if (props != null) {
-      errors.addAll(component.validateProps?.call(props) ?? const []);
+    final takesProps = component.isInteraction || component.validateProps != null;
+    final props = takesProps ? _propsOf(component, args['props']) : null;
+    if (props != null) errors.addAll(component.validateProps?.call(props) ?? const []);
+    if (component.isInteraction) {
+      // Built from props alone.
     } else if (resultId == null || resultId.isEmpty) {
       errors.add('result_id is required for ${component.id}');
     } else if (resultTool == null) {
@@ -370,7 +391,7 @@ final class PresentRequest {
       request: PresentRequest(
         component: component,
         surface: surface ?? component.defaultSurface,
-        resultId: props == null ? resultId : null,
+        resultId: component.isInteraction ? null : resultId,
         title: args['title']?.toString(),
         highlights: highlights,
         props: props ?? const {},

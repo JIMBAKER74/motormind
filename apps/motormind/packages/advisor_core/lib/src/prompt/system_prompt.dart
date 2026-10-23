@@ -66,7 +66,8 @@ const String _screenSection =
     'After a tool returns, call present(component, result_id) so the numbers are shown as a card; '
     'then one or two sentences at most. To ask something with a few possible answers, or to '
     'collect numbers, call present with choice/multi_choice/input_form instead of asking in prose. '
-    'One structured prompt per turn.';
+    'One structured prompt per turn. A line in [brackets] is what the app saw on screen, not the '
+    'person\'s words: answer it with a component, a short line, or nothing.';
 
 /// Assembles the system prompt from editable text sections plus the fixed
 /// contract sections, the component vocabulary and the live situation

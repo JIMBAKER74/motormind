@@ -36,6 +36,8 @@ abstract final class ChatStrings {
       'then ask me to read the page again.';
   static const captureFailed = 'The page could not be captured.';
   static const askMotormind = 'Ask Motormind';
+  static const compareTitle = 'Side by side';
+  static const compareMissing = 'Those listings are no longer on the page that was read.';
   static const starting = 'Starting…';
 
   /// What Motormind says when the person keeps tapping one card: the taps

@@ -109,6 +109,45 @@ void main() {
     expect(pipeline.userInputs, hasLength(2));
   });
 
+  test('the model can compare listings the app put on screen (remember)', () async {
+    final driver = FakeDriver([
+      FakeTurn(
+        calls: [
+          (
+            'present',
+            {
+              'component': 'vehicle_compare',
+              'result_id': 'search-1',
+              'props': {
+                'ids': ['L1', 'L2'],
+              },
+            },
+          ),
+        ],
+        text: (_) => 'Here they are side by side.',
+      ),
+    ]);
+    final pipeline = TurnPipeline(driver: driver)
+      ..remember(
+        const ToolResult(
+          id: 'search-1',
+          tool: 'find_vehicles',
+          args: {},
+          result: {
+            'listings': [
+              {'id': 'L1', 'title': '2021 Kia Sorento SX'},
+              {'id': 'L2', 'title': '2024 Nissan LEAF S'},
+            ],
+          },
+        ),
+      );
+    final events = await pipeline.run('[The person opened two listings]').toList();
+    final shown = events.whereType<Presented>().single;
+    expect(shown.request.component.id, 'vehicle_compare');
+    expect(shown.result!.id, 'search-1');
+    expect(events.whereType<PresentRejected>(), isEmpty);
+  });
+
   test('results and userInputs are read-only views', () {
     final pipeline = TurnPipeline(driver: FakeDriver([]));
     const stray = ToolResult(id: 'x', tool: 'estimate_payment', args: {});

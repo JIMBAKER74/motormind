@@ -356,6 +356,13 @@ class TurnPipeline {
   }
 
   /// Stores [r] for `present`, announces it, and shows its default card.
+  /// Makes a result the app produced on its own (the live search's
+  /// listings on the stage) referable by the model's `present` calls, so
+  /// the model can, for instance, compare two listings the person opened.
+  /// No event is emitted and nothing is shown: the result is already on
+  /// screen. Its numbers are page content and authorize nothing.
+  void remember(ToolResult r) => _results[r.id] = r;
+
   void _record(StreamController<TurnEvent> out, List<ToolResult> turnResults, ToolResult r) {
     _results[r.id] = r;
     turnResults.add(r);

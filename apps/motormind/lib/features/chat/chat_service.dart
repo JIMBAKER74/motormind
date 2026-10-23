@@ -185,11 +185,15 @@ final class ChatService extends Notifier<ChatState> {
     var pieces = 0;
     var failed = false;
     final tools = <(String, int)>[];
+    // A turn the app started from something it noticed: no bubble for the
+    // person (they said nothing), no filters inferred from the text, and a
+    // reply bubble only if the model says something.
+    final quiet = trigger == TurnTrigger.signal;
     final userMsg = ChatMessage(role: MessageRole.user, text: text.trim());
     var reply = const ChatMessage(role: MessageRole.motormind, text: '', streaming: true);
     // The obvious filters in a sentence ("a Honda sports car under 40k") apply
     // before the model has read it, so the page is already changing.
-    ref.read(searchProvider.notifier).updateFromText(text);
+    if (!quiet) ref.read(searchProvider.notifier).updateFromText(text);
     // The model is told the current search (it cannot see the card); the
     // bubble shows only what the person typed.
     final search = ref.read(searchProvider);
@@ -214,8 +218,12 @@ final class ChatService extends Notifier<ChatState> {
               '${search.lastCount ?? 0} listings read. Do not ask about these again.]';
     final prompt = text.trim() + searchContext + signalContext;
     final promptChars = prompt.length;
+    // What is on the stage can be named by the model (compare two listings).
+    for (final c in ref.read(stageProvider).cards) {
+      if (c.result case final r?) pipeline.remember(r);
+    }
     state = state.copyWith(
-      timeline: [...state.timeline, MessageEntry(userMsg), MessageEntry(reply)],
+      timeline: [...state.timeline, if (!quiet) MessageEntry(userMsg), MessageEntry(reply)],
       busy: true,
       clearGuardNote: true,
       clearError: true,
@@ -323,7 +331,9 @@ final class ChatService extends Notifier<ChatState> {
             // Gemma sometimes ends a turn right after a tool call with no
             // words. The screen must still answer, so the app writes the
             // sentence from what it knows (counts, not the model's numbers).
-            final text = narration.trim().isNotEmpty ? narration : _silentTurnText(results);
+            final text = narration.trim().isNotEmpty
+                ? narration
+                : (quiet ? '' : _silentTurnText(results));
             updateReply(reply.copyWith(text: text, streaming: false));
         }
       }
@@ -334,7 +344,9 @@ final class ChatService extends Notifier<ChatState> {
     } on Exception catch (e) {
       logDev('turn failed: $e');
       failed = true;
-      if (!reopened && _contextOverflow.hasMatch(e.toString())) {
+      if (quiet) {
+        // Nobody asked; a failed look-around is logged, not shown.
+      } else if (!reopened && _contextOverflow.hasMatch(e.toString())) {
         // The conversation outgrew the window. The person should not have
         // to know what a window is: open a fresh session that keeps the
         // profile (what they said they want, the mode, their numbers) and
@@ -365,6 +377,11 @@ final class ChatService extends Notifier<ChatState> {
               failed: failed,
             ),
           );
+    }
+    if (quiet && reply.text.trim().isEmpty) {
+      final t = [...state.timeline];
+      if (replyIndex < t.length) t.removeAt(replyIndex);
+      state = state.copyWith(timeline: t, clearError: true);
     }
     if (!reopen) return;
     // The failed exchange leaves the transcript; the retry writes its own.
@@ -427,6 +444,29 @@ final class ChatService extends Notifier<ChatState> {
 
   /// Option ids of the choice Motormind offers after repeated taps.
   static const attentionPrefix = 'attention-';
+
+  /// Listings cards that have already prompted a look-around, so the model
+  /// is asked once per card, not on every tap after the second.
+  final Set<int> _noticedCards = {};
+
+  /// The person opened a second listing in one listings card. The model is
+  /// told which two, by id and name (never their prices), and decides what
+  /// to show: a side-by-side compare, a question, or nothing. The app does
+  /// not choose the component; that is the point (design notes, Q71 and
+  /// DD-Q22). Once per card, and only when the conversation is idle.
+  Future<void> noticeOpenedTwo(ShownComponent card, List<VehicleListing> opened) async {
+    final result = card.result;
+    if (result == null || opened.length < 2 || !state.ready || state.busy) return;
+    if (!_noticedCards.add(card.id)) return;
+    final names = opened.map((l) => '${l.id} ${l.title}').join('; ');
+    await _send(
+      '[The person opened two listings from ${result.id}: $names. If seeing them side by side '
+      'would help, present vehicle_compare with result_id ${result.id} and props.ids; '
+      'otherwise say nothing.]',
+      trigger: TurnTrigger.signal,
+      detail: 'opened-two',
+    );
+  }
 
   /// Motormind noticed the person tapping a listing again and again and asks what
   /// would help, with the things it can do as answers. Nothing is sent to

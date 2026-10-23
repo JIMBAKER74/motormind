@@ -33,6 +33,10 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
   String? _open;
   final _taps = RepeatedTaps();
 
+  /// Listings opened in this card, in order; the second one is a cue the
+  /// model is told about (see ChatService.noticeOpenedTwo).
+  final List<VehicleListing> _opened = [];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -85,7 +89,17 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
                 // read back, and a tap on a tile is not page content.
                 logDev('tap: listing tile ${listings.indexOf(l) + 1} of ${listings.length}');
                 setState(() => _open = _open == key ? null : key);
-                if (_open == key) signalsNotifier.markViewed(l);
+                if (_open == key) {
+                  signalsNotifier.markViewed(l);
+                  if (!_opened.any((o) => o.id == l.id)) _opened.add(l);
+                  if (_opened.length == 2) {
+                    unawaited(
+                      ref
+                          .read(chatServiceProvider.notifier)
+                          .noticeOpenedTwo(widget.shown, List.of(_opened)),
+                    );
+                  }
+                }
                 // The third quick tap on one tile is a signal, not a toggle.
                 if (_taps.tap(key, DateTime.now())) {
                   ref.read(chatServiceProvider.notifier).noticeTapping(l);

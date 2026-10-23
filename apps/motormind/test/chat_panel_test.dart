@@ -11,6 +11,7 @@ import 'package:motormind/features/chat/chat_panel.dart';
 import 'package:motormind/features/chat/chat_service.dart';
 import 'package:motormind/features/chat/chat_strings.dart';
 import 'package:motormind/features/chat/starters.dart';
+import 'package:motormind/features/chat/turn_stats.dart';
 import 'package:motormind/features/listings/listing_signals.dart';
 import 'package:motormind/features/search/search_service.dart';
 import 'package:vehicle_finance/vehicle_finance.dart';
@@ -62,7 +63,19 @@ class ScriptedDriver implements ChatDriver {
   }
 
   Stream<DriverChunk> _reply(String userText, ToolCallHandler onToolCall) async* {
-    if (userText.contains('long story')) {
+    final opened = RegExp(r'opened two listings from (\S+): (L\d+) .*; (L\d+) ')
+        .firstMatch(userText);
+    if (opened != null) {
+      // What a model that takes the cue does: show the two side by side.
+      await onToolCall('present', {
+        'component': 'vehicle_compare',
+        'result_id': opened.group(1),
+        'props': {
+          'ids': [opened.group(2), opened.group(3)],
+        },
+      });
+      yield const DriverText('Here they are side by side.');
+    } else if (userText.contains('long story')) {
       if (overflowsLeft > 0) {
         overflowsLeft--;
         throw Exception(
@@ -471,6 +484,33 @@ void main() {
   });
 
   group('cards stage', () {
+    testWidgets('opening a second listing lets the model choose a side-by-side', (tester) async {
+      final s = await _start(tester, fullscreen: false);
+      await _chooseMode(tester, s, 'browsing');
+      final before = s.driver.prompts.length;
+      await tester.tap(find.text('2021 Honda CR-V EX'));
+      await tester.pumpAndSettle();
+      expect(s.driver.prompts, hasLength(before)); // one listing: nothing asked
+      await _turn(tester, s, () => tester.tap(find.text('2023 BMW X3')));
+      // The model was told which two, by id and name, never their prices.
+      final cue = s.driver.prompts.last;
+      expect(cue, contains('opened two listings'));
+      expect(cue, isNot(contains('27995')));
+      expect(cue, isNot(contains('41000')));
+      // No bubble for the person, who said nothing.
+      expect(
+        s.container.read(chatServiceProvider).messages.where((m) => m.text.contains('[The person')),
+        isEmpty,
+      );
+      // The model chose the compare; it is on the stage, focused.
+      final stage = s.container.read(stageProvider);
+      expect(stage.focused!.request.component.id, 'vehicle_compare');
+      expect(find.byKey(const Key('compare-L1')), findsOneWidget);
+      expect(find.byKey(const Key('compare-L2')), findsOneWidget);
+      // Its stats say what started it.
+      expect(s.container.read(turnStatsProvider).first.trigger, TurnTrigger.signal);
+    });
+
     testWidgets('three quick taps on one tile make Motormind ask, and a bigger photo follows', (
       tester,
     ) async {

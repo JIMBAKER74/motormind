@@ -63,7 +63,7 @@ void main() {
       expect(find.byKey(const Key('photo-https://img/a.jpg')), findsOneWidget);
       expect(find.textContaining('2021 Kia Sorento SX'), findsOneWidget);
       // The fresh read found nothing new; the remembered car is still one of
-    // this session's listings, so it still counts.
+      // this session's listings, so it still counts.
       // The panel is collapsed, so the container is reached through the stage.
       final container = ProviderScope.containerOf(tester.element(find.byKey(const Key('stage'))));
       expect(container.read(searchProvider).lastCount, 1);
