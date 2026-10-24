@@ -23,6 +23,8 @@ dependencies:
     path: packages/advisor_core
 
   # App architecture (ADR 0003, ADR 0004)
+  firebase_core: ^4.15.0
+  firebase_analytics: ^12.6.0
   flutter_riverpod: ^3.0.0
   go_router: ^16.0.0
 

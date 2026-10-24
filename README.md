@@ -32,6 +32,10 @@ with or endorsed by Deloitte. The broader idea the project explores is **UI comp
 at runtime from the conversation** rather than pre-designed screens
 ([ADR 0006](docs/adr/0006-generative-ui.md)).
 
+## Analytics and the Firebase key
+
+The app can report anonymous usage counts to Firebase Analytics. The Firebase project identifiers (an API key, app id, sender id and project id) are supplied at build time from a local `firebase.env` file and are not in this repository; without the file, analytics is a no-op and the app runs normally. Google's documentation is explicit that these identifiers are [public by design](https://firebase.google.com/docs/projects/api-keys): they name a project, and access is governed by IAM, Firebase Security Rules and App Check, not by secrecy. They are kept out of the repository for two other reasons. A clone that builds from source should report to its own project, or to nobody, rather than to mine. And an identifier that looks like a secret gets flagged as one by every automated scanner and by most reviewers, which is a conversation that costs more than it is worth. The key in use is restricted in Google Cloud to the Analytics and Installations APIs and to this app's package and signing certificate. Builds I distribute carry it; the repository does not. No analytics parameter may carry free text or a number; see `lib/services/analytics.dart`.
+
 ## Experimental status
 
 The vehicle use case is the carrier; the thesis is dynamic design, and it is a prototype.

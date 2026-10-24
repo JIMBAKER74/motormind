@@ -151,9 +151,9 @@ mirror), the `hf` CLI is installed via pipx:
 hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ~/models/motormind
 ```
 
-## 8. Analytics (no vendor in the demo)
+## 8. Analytics and the Firebase key
 
-The demo ships `NoopAnalytics`. There is no Firebase project, no `google-services.json`, no `firebase_options.dart`, and no API key in this repository; the earlier Firebase Analytics wiring was removed on 2026-10-23 and the project it pointed at was deleted. A store flavor would bind a backend behind `AllowListAnalytics` and pass `--dart-define=MOTORMIND_ANALYTICS=true`; see backlog VA-7.1.3.
+Firebase Analytics is wired in, and the project identifiers are supplied at build time, never committed. Copy `apps/motormind/firebase.env.example` to `firebase.env`, fill it from your Firebase project's app settings (API key, app id, sender id, project id), and build with `--dart-define-from-file=firebase.env`. Without that file the app runs with analytics as a no-op. The Android `google-services` Gradle plugin is not used; `firebase_core` is initialized from Dart with those values, so no `google-services.json` or `GoogleService-Info.plist` is needed. Why the key is treated this way is in the README under "Analytics and the Firebase key."
 
 ## Release signing (Android)
 
