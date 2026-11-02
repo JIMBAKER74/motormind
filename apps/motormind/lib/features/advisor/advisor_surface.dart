@@ -5,10 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/advisor_model_service.dart';
+import '../../services/log.dart';
+import '../browser/browser_service.dart';
 import '../chat/chat_panel.dart';
 import '../chat/chat_service.dart';
+import '../listings/listing_signals.dart';
+import '../search/search_service.dart';
 import 'display_agent.dart';
 import 'stage.dart';
+import 'tap_journal.dart';
 
 /// The Motormind surface state machine (ADR 0006 §4). The model may
 /// *request* a state through `present`; the person owns the toggle. A pin
@@ -70,26 +75,112 @@ class AdvisorSurfaceHost extends ConsumerWidget {
     // wins. Listened here because this host outlives the stage view.
     ref.listen(displayProvider, (_, d) => ref.read(stageProvider.notifier).applyDecision(d.stage));
 
-    return switch (state) {
-      SurfaceState.collapsed => Stack(
-        children: [
-          content,
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: FloatingActionButton.extended(
-              key: const Key('surface-bubble'),
-              onPressed: () => ref.read(surfaceProvider.notifier).userSet(SurfaceState.docked),
-              icon: const Icon(Icons.chevron_right),
-              label: const Text('Motormind'),
+    final stage = KeyedSubtree(key: stageRegionKey, child: content);
+    return _TapWatch(
+      child: switch (state) {
+        SurfaceState.collapsed => Stack(
+          children: [
+            stage,
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: FloatingActionButton.extended(
+                key: const Key('surface-bubble'),
+                onPressed: () => ref.read(surfaceProvider.notifier).userSet(SurfaceState.docked),
+                icon: const Icon(Icons.chevron_right),
+                label: const Text('Motormind'),
+              ),
             ),
-          ),
-        ],
-      ),
-      SurfaceState.docked => _Docked(content: content),
-      SurfaceState.fullscreen => const _Panel(key: Key('surface-fullscreen')),
-    };
+          ],
+        ),
+        SurfaceState.docked => _Docked(content: stage),
+        SurfaceState.fullscreen => const _Panel(key: Key('surface-fullscreen')),
+      },
+    );
   }
+}
+
+/// Marks the stage, so a run of dead taps can be placed: on the stage, or
+/// in the Motormind panel.
+final GlobalKey stageRegionKey = GlobalKey(debugLabel: 'stage-region');
+
+/// Watches every tap on the screen without taking it (the gestures below
+/// still get it) and tells Motormind when taps repeat in one place while
+/// nothing on screen changes (see [TapJournal]).
+class _TapWatch extends ConsumerStatefulWidget {
+  const _TapWatch({required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<_TapWatch> createState() => _TapWatchState();
+}
+
+class _TapWatchState extends ConsumerState<_TapWatch> {
+  final _journal = TapJournal();
+  final Map<int, Offset> _downs = {};
+
+  /// A pointer that moved further than this between down and up was a
+  /// scroll or a drag, not a tap.
+  static const _tapSlop = 18.0;
+
+  /// The tile's own "tapping that one" question is asked from the tap
+  /// callback, which runs after this listener; waiting this long lets it
+  /// win, and the general question then stands down.
+  static const _yieldToTileQuestion = Duration(milliseconds: 60);
+
+  /// What the screen shows, as a string that changes when anything a tap
+  /// could have changed does.
+  String _fingerprint() {
+    final stage = ref.read(stageProvider);
+    final chat = ref.read(chatServiceProvider);
+    final search = ref.read(searchProvider);
+    final signals = ref.read(listingSignalsProvider);
+    return [
+      stage.mode.name,
+      stage.cards.length,
+      stage.focus,
+      chat.timeline.length,
+      chat.busy,
+      search.query.describe(),
+      search.applying,
+      ref.read(surfaceProvider).name,
+      ref.read(bigPhotoProvider),
+      ref.read(browserProvider).url,
+      signals.viewed.length,
+      signals.liked.length,
+      signals.dismissed.length,
+    ].join('|');
+  }
+
+  String _regionOf(Offset global) {
+    final box = stageRegionKey.currentContext?.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      final local = box.globalToLocal(global);
+      if (box.paintBounds.contains(local)) return 'the cards';
+    }
+    return 'the Motormind panel';
+  }
+
+  void _up(PointerUpEvent e) {
+    final down = _downs.remove(e.pointer);
+    if (down == null || (e.position - down).distance > _tapSlop) return;
+    if (!_journal.tap(e.position, DateTime.now(), _fingerprint())) return;
+    final region = _regionOf(e.position);
+    logDev('dead taps: $region');
+    Future<void>.delayed(_yieldToTileQuestion, () {
+      if (mounted) ref.read(chatServiceProvider.notifier).noticeDeadTaps(region);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: (e) => _downs[e.pointer] = e.position,
+    onPointerUp: _up,
+    onPointerCancel: (e) => _downs.remove(e.pointer),
+    child: widget.child,
+  );
 }
 
 class _Docked extends ConsumerStatefulWidget {

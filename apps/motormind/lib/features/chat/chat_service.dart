@@ -9,6 +9,7 @@ import '../../services/log.dart';
 import '../advisor/advisor_surface.dart';
 import '../advisor/display_agent.dart';
 import '../advisor/stage.dart';
+import '../advisor/tap_journal.dart';
 import '../browser/browser_service.dart';
 import '../listings/listing_signals.dart';
 import '../models/model_catalog.dart';
@@ -576,6 +577,77 @@ final class ChatService extends Notifier<ChatState> {
     state = state.copyWith(timeline: [...state.timeline, ComponentEntry(shown)]);
   }
 
+  /// Option ids of the question asked after dead taps anywhere.
+  static const lookPrefix = 'look-';
+
+  /// Where the last run of dead taps was ("the cards", "the Motormind
+  /// panel"); the answer to the question applies there.
+  String? _deadTapRegion;
+
+  /// Taps repeated in one place while nothing on screen changed: Motormind
+  /// asks what the person is looking for, with the things it can do at
+  /// once as answers, and the model hears about it with the next turn. A
+  /// question already waiting (the tile's own) wins.
+  void noticeDeadTaps(String region) {
+    if (!state.ready) return;
+    final pending = state.timeline.any(
+      (e) =>
+          e is ComponentEntry &&
+          !e.shown.answered &&
+          (e.shown.request.props['question'] == ChatStrings.tappingQuestion ||
+              e.shown.request.props['question'] == ChatStrings.deadTapQuestion),
+    );
+    if (pending) return;
+    _deadTapRegion = region;
+    _signals.add('tapped $region ${TapJournal.threshold} times and nothing changed');
+    final shown = validatedComponent({
+      'component': 'choice',
+      'props': {
+        'question': ChatStrings.deadTapQuestion,
+        'options': [
+          {'id': '${lookPrefix}bigger', 'label': ChatStrings.lookBigger},
+          {'id': '${lookPrefix}detail', 'label': ChatStrings.lookDetail},
+          {'id': '${lookPrefix}no', 'label': ChatStrings.nothingThanks},
+        ],
+      },
+    }, id: _componentIds.next());
+    if (shown == null) return;
+    state = state.copyWith(timeline: [...state.timeline, ComponentEntry(shown)]);
+    // The question is in the conversation; the panel comes up to show it.
+    if (ref.read(surfaceProvider) == SurfaceState.collapsed) {
+      ref.read(surfaceProvider.notifier).request(SurfaceState.docked);
+    }
+  }
+
+  /// Answers to [noticeDeadTaps]: a bigger view now, or the model asked to
+  /// show more where the person was tapping. True when [id] was one.
+  bool _answerLook(String id, ShownComponent? source) {
+    if (!id.startsWith(lookPrefix)) return false;
+    _markAnswered(source);
+    final want = id.substring(lookPrefix.length);
+    final region = _deadTapRegion ?? 'the screen';
+    _signals.add('asked for: $want');
+    switch (want) {
+      case 'bigger':
+        // The cards get the whole screen, or the panel does.
+        ref
+            .read(surfaceProvider.notifier)
+            .request(region == 'the cards' ? SurfaceState.collapsed : SurfaceState.fullscreen);
+      case 'detail':
+        unawaited(
+          _send(
+            '[The person tapped $region repeatedly and wants more detail there. Show it with a '
+            'component if one fits, or ask one short question.]',
+            trigger: TurnTrigger.signal,
+            detail: 'dead-taps',
+          ),
+        );
+      default:
+        break;
+    }
+    return true;
+  }
+
   /// Answers to [noticeTapping]'s question: done by the app at once, and
   /// remembered for the model. Returns true when [id] was one of them.
   bool _answerAttention(String id, ShownComponent? source) {
@@ -622,6 +694,7 @@ final class ChatService extends Notifier<ChatState> {
   Future<void> choose(String id, String label, {String? supplement, ShownComponent? source}) async {
     // The app's own questions are answered by the app, turn or no turn.
     if (_answerAttention(id, source)) return;
+    if (_answerLook(id, source)) return;
     // While a turn runs, a tap would mark the card answered and then be
     // dropped by send(); refusing it up front keeps the chips live.
     if (_pipeline == null || state.busy) return;

@@ -52,6 +52,11 @@ abstract final class ChatStrings {
   static const openOnSite = 'Open it on the site';
   static const nothingThanks = 'Nothing, thanks';
 
+  /// Asked after taps repeated in one place changed nothing on screen.
+  static const deadTapQuestion = 'I see you tapping there. What are you looking for?';
+  static const lookBigger = 'A bigger view';
+  static const lookDetail = 'More detail';
+
   /// Shown in place of a part of the screen that hit a bug; the rest of the
   /// app keeps working and Motormind is told.
   static const partBroke = 'This part of the screen hit a bug. The rest keeps working.';

@@ -4,8 +4,10 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:motormind/features/advisor/advisor_surface.dart';
 import 'package:motormind/features/advisor/display_agent.dart';
 import 'package:motormind/features/advisor/stage.dart';
+import 'package:motormind/features/advisor/tap_journal.dart';
 import 'package:motormind/features/browser/browser_service.dart';
 import 'package:motormind/features/chat/chat_panel.dart';
 import 'package:motormind/features/chat/chat_service.dart';
@@ -508,6 +510,34 @@ void main() {
   });
 
   group('cards stage', () {
+    testWidgets('dead taps on the stage make Motormind ask; a bigger view follows', (tester) async {
+      final s = await _start(tester, fullscreen: false);
+      final header = find.textContaining('Listings ·');
+      expect(header, findsOneWidget);
+      // The card's header does nothing when tapped: three taps, no change.
+      for (var i = 0; i < TapJournal.threshold; i++) {
+        await tester.tap(header);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+      final asked = s.container
+          .read(chatServiceProvider)
+          .timeline
+          .whereType<ComponentEntry>()
+          .where((e) => e.shown.request.props['question'] == ChatStrings.deadTapQuestion);
+      expect(asked, hasLength(1));
+      await s.container
+          .read(chatServiceProvider.notifier)
+          .choose(
+            '${ChatService.lookPrefix}bigger',
+            ChatStrings.lookBigger,
+            source: asked.single.shown,
+          );
+      await tester.pumpAndSettle();
+      // On the cards, a bigger view is the cards with the panel out of the way.
+      expect(s.container.read(surfaceProvider), SurfaceState.collapsed);
+    });
+
     testWidgets('opening a second listing lets the model choose a side-by-side', (tester) async {
       final s = await _start(tester, fullscreen: false);
       await _chooseMode(tester, s, 'browsing');
