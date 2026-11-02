@@ -129,7 +129,15 @@ abstract final class ChatStrings {
   static String searchNote(String query, String site, int matched) =>
       'Looking for $query on $site: $matched matched.';
 
-  static String monthlyCostOf(String title) => 'What would the $title cost me a month?';
+  /// The person's question when they tap Monthly cost? on a listing. The
+  /// listed price is in their own sentence on purpose: a price read from a
+  /// page never authorizes a calculation (the input guard), but the person
+  /// chose this car, so the price is theirs to ask about. Without it the
+  /// model had no price it could use and searched instead (headless
+  /// emulator, 2026-11-02).
+  static String monthlyCostOf(String title, {double? price}) => price == null
+      ? 'What would the $title cost me a month?'
+      : 'What would the $title, listed at ${wholeDollars(price)}, cost me a month?';
 
   /// The listings card's "more" control: how many of the site's total are
   /// on the card.

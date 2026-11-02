@@ -119,7 +119,7 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
               onAsk: () => ref
                   .read(chatServiceProvider.notifier)
                   .send(
-                    ChatStrings.monthlyCostOf(l.title),
+                    ChatStrings.monthlyCostOf(l.title, price: l.price),
                     trigger: TurnTrigger.tileCost,
                     detail: 'tile ${listings.indexOf(l) + 1}',
                   ),

@@ -531,6 +531,26 @@ void main() {
   });
 
   group('cards stage', () {
+    testWidgets('Monthly cost? asks with the listed price in the person\'s own words', (
+      tester,
+    ) async {
+      final s = await _start(tester, fullscreen: false);
+      await tester.tap(find.text('2021 Honda CR-V EX'));
+      await tester.pumpAndSettle();
+      await _turn(
+        tester,
+        s,
+        () => tester.tap(find.byKey(const Key('ask-cost-2021 Honda CR-V EX|27995'))),
+      );
+      // The price is the person's to ask about, so the calculation it leads
+      // to is allowed; a price only read off the page would not be.
+      expect(
+        s.driver.prompts.last,
+        endsWith('What would the 2021 Honda CR-V EX, listed at \$27,995, cost me a month?'),
+      );
+      expect(s.container.read(turnStatsProvider).first.trigger, TurnTrigger.tileCost);
+    });
+
     testWidgets('dead taps on the stage make Motormind ask; a bigger view follows', (tester) async {
       final s = await _start(tester, fullscreen: false);
       final header = find.textContaining('Listings ·');

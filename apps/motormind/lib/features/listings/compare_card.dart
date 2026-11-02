@@ -81,7 +81,7 @@ class CompareCard extends ConsumerWidget {
                           onPressed: () => ref
                               .read(chatServiceProvider.notifier)
                               .send(
-                                ChatStrings.monthlyCostOf(l.title),
+                                ChatStrings.monthlyCostOf(l.title, price: l.price),
                                 trigger: TurnTrigger.tileCost,
                                 detail: 'compare ${l.id}',
                               ),
