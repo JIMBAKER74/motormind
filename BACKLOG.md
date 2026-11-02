@@ -240,6 +240,13 @@ VA-10, then VA-8 and VA-12.
 - **VA-3.4.1** The model chooses a component from a cue: opening a second listing tells
   the model which two; it may present `vehicle_compare`. **Done.** Open: how often a 2B
   model takes the cue (C17).
+- **VA-1.4.8** Round of 2026-11-01/02: defaults applied (7-day remembered cards, the
+  read path in the self-check, the fresh-page line, the still panel, every mode's
+  guidance, the canvas size), Test tools, the per-turn screen line, dead taps anywhere,
+  More from EchoPark, and the per-trigger timings on a headless emulator. **Done.**
+  Found and fixed on the device: the "browsing" echo, Monthly cost? without a usable
+  price, filters inferred from the app's own sentence, the 8,192 window on a 6 GB device,
+  the compare call refused four ways. Open: the same timings on the Fold.
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the

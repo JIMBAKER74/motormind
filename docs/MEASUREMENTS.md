@@ -95,6 +95,61 @@ absorbs them without a trace, so the owner's repeated taps on the disabled input
 nothing to read. That is the gap the "dead taps are signals" rule (design notes, DD-R42)
 closes from the app's side: the app records them because the log never will.
 
+### Per-trigger turn timing, 2026-11-02 (a headless emulator, not the Fold)
+
+Run on a second, windowless emulator (Pixel 8 profile, 6 GB, Gemma 4 E2B on the CPU
+because the emulator has no usable GPU, a 4,096-token window) so the owner's own
+emulator was left alone. Emulator CPU timings are slower than the Fold's GPU; they are
+recorded because they compare the triggers with each other, and the Fold numbers are
+still to come. Each row is one turn, with the second session off unless it says so.
+
+| Trigger | First word | Total | Tools | Output |
+|---|---|---|---|---|
+| Opening choice, first turn of a session | 12.2–13.5 s | 13.9–14.9 s | update_profile | 26–40 pieces |
+| Typed "SUVs under 30k", second turn | 6.9 s | 9.3 s | find_vehicles, present | 60 at 24.6/s |
+| Tile's Monthly cost?, first turn of a session | 14.5 s | 19.2 s | find_vehicles, estimate_payment, present ×3 | 66 at 13.8/s |
+| Compare cue (quiet, second listing opened) | 2.6–3.2 s | 3.3–4.4 s | present (vehicle_compare) | 14–27 |
+| Dead taps, then More detail (quiet) | 5.4 s | 6.4 s | read_page | 25 |
+| Typed follow-up, conversation warm | 0.5 s | 1.5 s | none | 24 at 24.2/s |
+| Typed follow-up, second session on | 1.9 s | 3.0 s | present | 29 |
+| Typed follow-up after a display decision | 0.55 s | 1.46 s | none | 24 |
+
+What the numbers say. The first turn of a session costs 12 to 14 seconds before a
+word on this CPU, almost all of it the one-time prefill of the instruction and tool
+declarations (about 980 tokens of instruction now that every mode's guidance travels,
+plus the tools); every later turn starts in 0.5 to 3 seconds. The quiet turns the app
+starts itself (the compare cue, a dead-tap answer) are cheap once the session is warm.
+One display decision took 2.4 s, the next came about 70 s later, and the turn after a
+decision showed no replay penalty in this short conversation; the Fold's 30-second
+replays came from long ones, so that question stays open for the phone.
+
+What the run found and fixed, each in its own commit: the model answered the opening
+choice with the bare word "browsing" (mode names at the start of prompt lines);
+Monthly cost? searched instead of calculating (no price the guard would accept); the
+app inferred a search from its own sentence and reloaded the page mid-turn; a 6 GB
+device with 4.0 GB free got the 8,192 window and was killed by Android's low-memory
+killer; the compare call was refused four ways before it was accepted in the shape the
+model sends.
+
+### The log of a session, read against expectations
+
+The owner's point (2026-10-12): a log without an obvious error still says what happened,
+and whether it matches what the app was supposed to do. The 10:58 launch on the Fold 4,
+line by line, with the expectation beside each:
+
+| Time | What the log says | Expected? |
+|---|---|---|
+| 10:58:01 | Process starts; the model manager restores Gemma 4 E2B as active | Yes |
+| 10:58:02 | 4.3 GB available → 8,192-token window; engine create starts on the GPU | Yes (the 4 GB threshold) |
+| 10:58:09 | Engine ready after 6.7 s | Faster than the 10 to 15 s of the first day; warm file cache |
+| 10:58:14 | EchoPark results page read with recipe v2: 22 cards, 22 priced, 8 with image | Yes for cards and prices; 8 images is the lazy carousel before any scrolling |
+| 10:58:14 → 11:35 | 1,955 lines from the app's process (surfaces, input channels, a background/foreground cycle at 11:33) and none from the Flutter side | **No.** The owner tapped the disabled input several times, backgrounded the app and saw a red screen; Flutter prints its own errors and nothing arrived. See TECH_QUESTIONS TQ83 |
+
+What the log cannot say: taps. Flutter does not log touches, and a disabled widget
+absorbs them without a trace, so the owner's repeated taps on the disabled input left
+nothing to read. That is the gap the "dead taps are signals" rule (design notes, DD-R42)
+closes from the app's side: the app records them because the log never will.
+
 ### Per-trigger turn timing (instrumented 2026-10-22, not yet run on the Fold)
 
 Every turn now records what started it and its timing from the person's side; the
