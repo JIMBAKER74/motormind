@@ -269,6 +269,7 @@ final class BrowserService extends Notifier<BrowserState> {
     if (recipe == null) return const [];
     final r = const RecipeReader().read(page.html, recipe, sourceUrl: page.url, now: now);
     ref.read(recipeStoreProvider.notifier).recordCheck(siteId, r.check);
+    ref.read(lastReadsProvider.notifier).record(siteId, recipe.version, r.check);
     logDev('recipe $siteId v${recipe.version}: ${r.check}');
     return r.check.ok ? r.listings : const [];
   }

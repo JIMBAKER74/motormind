@@ -36,6 +36,10 @@ abstract final class ChatStrings {
       'then ask me to read the page again.';
   static const captureFailed = 'The page could not be captured.';
   static const askMotormind = 'Ask Motormind';
+
+  /// Said when a long conversation filled the model's memory and Motormind
+  /// opened a fresh session to carry on (the default from QUESTIONS Q91).
+  static const freshPage = 'I started a fresh page to keep going; I still have what you told me.';
   static const compareTitle = 'Side by side';
   static const compareMissing = 'Those listings are no longer on the page that was read.';
   static const starting = 'Starting…';

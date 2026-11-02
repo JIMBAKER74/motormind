@@ -115,17 +115,23 @@ class SystemPromptBuilder {
       ..writeln(ComponentRegistry.describeForPrompt())
       ..writeln();
 
-    final guidance = mode == null ? null : modeGuidance[mode];
-    if (mode != null && guidance != null) {
+    // Every mode's guidance is here, and the current mode is named in each
+    // message's context line. The instruction is built once per session,
+    // usually before a mode is chosen, so guidance for "the current mode"
+    // alone never reached the model (design notes, DD-Q23, option c).
+    final modes = [
+      for (final m in ShoppingMode.values)
+        if (modeGuidance[m] case final g?) '${m.name}: ${g.trim().replaceAll('\n', ' ')}',
+    ];
+    if (modes.isNotEmpty) {
       buffer
-        ..writeln('# Current shopping mode: ${mode.name}')
-        ..writeln(guidance.trim())
+        ..writeln('# Shopping modes (the current one is named with each message)')
+        ..writeln(modes.join('\n'))
         ..writeln();
-    } else {
+    }
+    if (mode == null) {
       buffer
-        ..writeln(
-          '# Shopping mode: unknown. Infer it (browsing/dreaming/practical/buying) and record it with update_profile.',
-        )
+        ..writeln('Mode unknown until the person says; record it with update_profile.')
         ..writeln();
     }
 

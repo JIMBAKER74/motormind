@@ -27,9 +27,23 @@ abstract class ListingCache {
   /// this is a few pages' worth.
   static const maxPerSite = 120;
 
-  /// The listings remembered for [siteId], newest read first; empty when
-  /// none are or they cannot be read.
+  /// Remembered listings older than this are dropped: a car read a week ago
+  /// has likely sold or changed price, and a stage of stale cars misleads
+  /// more than an empty one (the default from QUESTIONS Q93).
+  static const maxAge = Duration(days: 7);
+
+  /// [listings] without those older than [maxAge] at [now].
+  static List<VehicleListing> withinAge(List<VehicleListing> listings, DateTime now) => [
+    for (final l in listings)
+      if (now.difference(l.readAt) <= maxAge) l,
+  ];
+
+  /// The listings remembered for [siteId], newest read first and none older
+  /// than [maxAge]; empty when none are or they cannot be read.
   Future<List<VehicleListing>> load(String siteId);
+
+  /// Forgets every remembered listing on every site (Test tools).
+  Future<void> clear();
 
   /// Remembers [fresh] for [siteId] ahead of what was remembered before,
   /// one entry per listing (see [keyOf]), at most [maxPerSite]. A fresh
@@ -86,13 +100,23 @@ final class FileListingCache extends ListingCache {
       if (!await f.exists()) return const [];
       final raw = jsonDecode(await f.readAsString());
       if (raw is! List) return const [];
-      return [
+      return ListingCache.withinAge([
         for (final e in raw)
           if (e is Map) VehicleListing.fromJson(e.cast<String, Object?>()),
-      ];
+      ], DateTime.now());
     } on Exception catch (e) {
       logDev('listing cache unreadable: $e');
       return const [];
+    }
+  }
+
+  @override
+  Future<void> clear() async {
+    try {
+      final dir = await _ref.read(listingCacheDirProvider.future);
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } on Exception catch (e) {
+      logDev('listing cache not cleared: $e');
     }
   }
 
@@ -115,8 +139,15 @@ final class FileListingCache extends ListingCache {
 final class MemoryListingCache extends ListingCache {
   final Map<String, List<VehicleListing>> bySite = {};
 
+  /// The clock the age limit is measured against; tests move it.
+  DateTime now = DateTime.now();
+
   @override
-  Future<List<VehicleListing>> load(String siteId) async => bySite[siteId] ?? const [];
+  Future<List<VehicleListing>> load(String siteId) async =>
+      ListingCache.withinAge(bySite[siteId] ?? const [], now);
+
+  @override
+  Future<void> clear() async => bySite.clear();
 
   @override
   Future<void> save(String siteId, List<VehicleListing> fresh) async {

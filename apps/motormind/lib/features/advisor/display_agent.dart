@@ -154,6 +154,7 @@ class ScreenState {
     required this.userExpandedFilters,
     required this.lastUserText,
     required this.busy,
+    this.conversationReady = true,
   });
 
   /// Characters of the person's last message the agent sees.
@@ -174,6 +175,11 @@ class ScreenState {
 
   /// True while a conversation turn is running; the model agent waits.
   final bool busy;
+
+  /// False while the conversation has not started (the model is loading or
+  /// must be downloaded); the panel then holds its size, so the button in
+  /// it does not move under a finger when listings arrive.
+  final bool conversationReady;
 
   /// One line for the model.
   String describe() {
@@ -212,6 +218,11 @@ final class RulesDisplayAgent implements DisplayAgent {
     final StageSplit split;
     if (s.keyboardOpen) {
       split = StageSplit.typing;
+    } else if (!s.conversationReady) {
+      // A download button or a load line is in the panel: it holds still
+      // when the listings arrive (fresh install on the emulator, 2026-10-18:
+      // the button moved 200 px under the tap).
+      split = StageSplit.half;
     } else if (s.listingCount > 0 && stage == StageMode.cards) {
       split = StageSplit.twoThirds;
     } else {
@@ -403,6 +414,7 @@ final class DisplayController extends Notifier<DisplayDecision> {
       userExpandedFilters: search.userExpanded,
       lastUserText: chat.lastUserText,
       busy: chat.busy,
+      conversationReady: chat.ready,
     );
   }
 

@@ -360,6 +360,7 @@ class SelfCheck {
     required this.withImage,
     this.pageTotal,
     this.problems = const [],
+    this.fromData = false,
   });
 
   /// True when the read passed every rule and found at least one listing.
@@ -380,6 +381,11 @@ class SelfCheck {
   /// Each failed rule in words; empty when [ok].
   final List<String> problems;
 
+  /// True when the listings came from the page's own data block (see
+  /// `DataRule`), false when from the visible cards. A site change shows
+  /// first as a quiet switch from one to the other.
+  final bool fromData;
+
   /// Restores a check from its [toJson] form (captures keep the verdict).
   factory SelfCheck.fromJson(Map<String, Object?> json) => SelfCheck(
     ok: json['ok'] == true,
@@ -388,6 +394,7 @@ class SelfCheck {
     withImage: (json['withImage'] as num?)?.toInt() ?? 0,
     pageTotal: (json['pageTotal'] as num?)?.toInt(),
     problems: ((json['problems'] as List?) ?? const []).cast<String>(),
+    fromData: json['fromData'] == true,
   );
 
   /// Serializes the verdict so a capture can keep it; unset optionals are
@@ -399,11 +406,13 @@ class SelfCheck {
     'withImage': withImage,
     if (pageTotal != null) 'pageTotal': pageTotal,
     'problems': problems,
+    if (fromData) 'fromData': true,
   };
 
   @override
   String toString() => ok
-      ? '$cardsFound cards, $withPrice priced, $withImage with image'
+      ? '$cardsFound cards, $withPrice priced, $withImage with image, '
+            'from ${fromData ? 'page data' : 'visible cards'}'
       : 'failed: ${problems.join('; ')}';
 }
 
@@ -470,7 +479,13 @@ class RecipeReader {
       return RecipeResult(
         listings: l,
         recipe: recipe,
-        check: _check(counts, recipe, doc.body?.text ?? '', dataTotal: fromData.total),
+        check: _check(
+          counts,
+          recipe,
+          doc.body?.text ?? '',
+          dataTotal: fromData.total,
+          fromData: true,
+        ),
       );
     }
     final counts = _readCards(doc, recipe, sourceUrl: sourceUrl, now: now);
@@ -540,7 +555,13 @@ class RecipeReader {
     );
   }
 
-  SelfCheck _check(_CardCounts counts, ReadingRecipe recipe, String pageText, {int? dataTotal}) {
+  SelfCheck _check(
+    _CardCounts counts,
+    ReadingRecipe recipe,
+    String pageText, {
+    int? dataTotal,
+    bool fromData = false,
+  }) {
     final rules = recipe.selfCheck;
     final read = counts.listings.length;
     final problems = <String>[];
@@ -577,6 +598,7 @@ class RecipeReader {
       problems.add('read $read cards but the page says $pageTotal results');
     }
     return SelfCheck(
+      fromData: fromData,
       ok: problems.isEmpty && read > 0,
       cardsFound: read,
       withPrice: counts.withPrice,

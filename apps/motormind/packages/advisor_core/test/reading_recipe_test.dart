@@ -106,6 +106,8 @@ void main() {
       // A car with no photos in the data is still a listing, without one.
       expect(r.listings.last.imageUrl, isNull);
       expect(r.check.withImage, 3);
+      expect(r.check.fromData, isTrue);
+      expect(r.check.toString(), contains('from page data'));
     });
 
     test('no data block falls back to the visible cards', () {

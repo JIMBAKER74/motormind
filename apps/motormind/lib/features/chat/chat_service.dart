@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:advisor_core/advisor_core.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/advisor_model_service.dart';
@@ -96,7 +97,7 @@ final class ChatService extends Notifier<ChatState> {
   /// so [start] and the full-window recovery in [_runTurn] share it.
   Future<bool> _openSession(BuyerProfile profile) async {
     final builder = await ref.read(promptAssetsProvider.future);
-    final instruction = builder.build(profile: profile);
+    final instruction = builder.build(profile: profile, viewport: _viewport());
     final factory = ref.read(chatDriverFactoryProvider);
     ChatDriver driver;
     if (factory != null) {
@@ -124,6 +125,27 @@ final class ChatService extends Notifier<ChatState> {
     );
     return true;
   }
+
+  /// The canvas, for the opening context (design notes DD-R10): size and
+  /// posture are stable for a session; the keyboard changes per turn and is
+  /// in the per-turn screen line instead. Null where there is no view.
+  ViewportDescriptor? _viewport() {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) return null;
+    final v = views.first;
+    final size = v.physicalSize / v.devicePixelRatio;
+    if (size.isEmpty) return null;
+    return ViewportDescriptor(
+      widthDp: size.width,
+      heightDp: size.height,
+      // Material's compact width is below 600 dp; an unfolded Fold is wider.
+      posture: size.width >= _wideWidthDp ? 'wide' : 'phone',
+    );
+  }
+
+  /// Width from which the canvas is described as wide (a tablet or an
+  /// unfolded foldable), after Material's window size classes.
+  static const _wideWidthDp = 600;
 
   void _replaceEntry(int index, TimelineEntry entry) {
     final t = [...state.timeline];
@@ -387,6 +409,7 @@ final class ChatService extends Notifier<ChatState> {
     // The failed exchange leaves the transcript; the retry writes its own.
     final t = [...state.timeline]..removeAt(replyIndex);
     t.removeWhere((e) => e is MessageEntry && identical(e.message, userMsg));
+    t.add(const MessageEntry(ChatMessage(role: MessageRole.system, text: ChatStrings.freshPage)));
     state = state.copyWith(timeline: t, clearError: true);
     logDev('window full: reopening the session and sending again');
     if (!await _openSession(profile)) {

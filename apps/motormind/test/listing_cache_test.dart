@@ -7,18 +7,20 @@ import 'package:motormind/features/search/search_service.dart';
 
 import 'harness.dart';
 
-final _then = DateTime(2026, 10, 20);
+/// Two hours ago: well inside the age limit.
+final _then = DateTime.now().subtract(const Duration(hours: 2));
 
-VehicleListing _car(String vin, {String? image, double price = 20000}) => VehicleListing(
-  id: vin,
-  title: '2021 Kia Sorento SX',
-  sourceUrl: 'https://www.echopark.com/used-cars',
-  readAt: _then,
-  price: price,
-  mileage: 77000,
-  imageUrl: image,
-  detailUrl: 'https://www.echopark.com/car/$vin',
-);
+VehicleListing _car(String vin, {String? image, double price = 20000, DateTime? readAt}) =>
+    VehicleListing(
+      id: vin,
+      title: '2021 Kia Sorento SX',
+      sourceUrl: 'https://www.echopark.com/used-cars',
+      readAt: readAt ?? _then,
+      price: price,
+      mileage: 77000,
+      imageUrl: image,
+      detailUrl: 'https://www.echopark.com/car/$vin',
+    );
 
 void main() {
   group('merge rules', () {
@@ -40,6 +42,16 @@ void main() {
         ('C', 20000.0),
       ]);
       expect(merged.first.imageUrl, 'https://img/a.jpg');
+    });
+
+    test('a remembered car older than the age limit is not shown', () async {
+      final cache = MemoryListingCache();
+      await cache.save('echopark', [
+        _car('OLD', readAt: DateTime.now().subtract(const Duration(days: 8))),
+        _car('NEW'),
+      ]);
+      final ids = (await cache.load('echopark')).map((l) => l.detailUrl!.split('/').last);
+      expect(ids, ['NEW']);
     });
 
     test('at most maxPerSite are kept, newest first', () {
