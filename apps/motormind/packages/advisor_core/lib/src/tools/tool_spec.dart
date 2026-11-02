@@ -287,6 +287,14 @@ abstract final class AdvisorTools {
             'items': _string(),
             'description': 'result field names to emphasize',
           },
+          // Declared at the top level on purpose: inside the undeclared
+          // props object Gemma 4 E2B sent {} every time (the call's shape,
+          // logged on the emulator, 2026-11-02).
+          'ids': {
+            'type': 'array',
+            'items': _string(),
+            'description': 'vehicle_compare: the listing ids to show side by side',
+          },
           'props': {
             'type': 'object',
             'description':

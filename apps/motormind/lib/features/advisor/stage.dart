@@ -57,8 +57,15 @@ final class StageNotifier extends Notifier<StageState> {
   /// Adds a component at the front. [bringForward] flips to Cards; the live
   /// search leaves the web page in view and only badges the Cards tab.
   void show(ShownComponent c, {bool bringForward = true}) {
+    // A newer card for the same result replaces the older one (the model's
+    // breakdown over the app's automatic summary), except a compare, which
+    // is a second view of the listings and sits beside them: it replaced
+    // the listings card on the emulator (2026-11-02).
     final id = c.result?.id;
-    final kept = id == null ? state.cards : state.cards.where((s) => s.result?.id != id).toList();
+    bool isCompare(ShownComponent s) => s.request.component.id == 'vehicle_compare';
+    final kept = id == null
+        ? state.cards
+        : state.cards.where((s) => s.result?.id != id || isCompare(s) != isCompare(c)).toList();
     state = state.copyWith(
       mode: bringForward ? StageMode.cards : state.mode,
       cards: [c, ...kept],

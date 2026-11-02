@@ -148,6 +148,43 @@ void main() {
     expect(events.whereType<PresentRejected>(), isEmpty);
   });
 
+  test('a compare in the shape Gemma sends: ids beside it, props empty, no result_id', () async {
+    final driver = FakeDriver([
+      FakeTurn(
+        calls: [
+          (
+            'present',
+            {
+              'component': 'vehicle_compare',
+              'ids': ['L1', 'L2'],
+              'props': <String, Object?>{},
+            },
+          ),
+        ],
+        text: (_) => 'Side by side.',
+      ),
+    ]);
+    final pipeline = TurnPipeline(driver: driver)
+      ..remember(
+        const ToolResult(
+          id: 'search-3',
+          tool: 'find_vehicles',
+          args: {},
+          result: {
+            'listings': [
+              {'id': 'L1'},
+              {'id': 'L2'},
+            ],
+          },
+        ),
+      );
+    final events = await pipeline.run('[The person opened two listings]').toList();
+    expect(events.whereType<PresentRejected>(), isEmpty);
+    final shown = events.whereType<Presented>().single;
+    expect(shown.result!.id, 'search-3');
+    expect(shown.request.props['ids'], ['L1', 'L2']);
+  });
+
   test('results and userInputs are read-only views', () {
     final pipeline = TurnPipeline(driver: FakeDriver([]));
     const stray = ToolResult(id: 'x', tool: 'estimate_payment', args: {});

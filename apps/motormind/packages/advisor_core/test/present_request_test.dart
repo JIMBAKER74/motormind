@@ -210,6 +210,32 @@ void main() {
       expect(ok.request!.props['ids'], ['L1', 'L4']);
     });
 
+    test('reads ids in the shapes a small model writes them', () {
+      List<Object?>? ids(Object? raw) =>
+          PresentRequest.validate({
+                'component': 'vehicle_compare',
+                'result_id': 'search-2',
+                'props': raw,
+              }, resultTool: 'find_vehicles').request?.props['ids']
+              as List<Object?>?;
+      expect(ids({'ids': 'L1, L4'}), ['L1', 'L4']);
+      expect(ids({'ids': '[L1, L4]'}), ['L1', 'L4']);
+      expect(
+        ids({
+          'ids': [1, 4],
+        }),
+        ['L1', 'L4'],
+      );
+      expect(ids('{"ids": ["L1", "L4"]}'), ['L1', 'L4']);
+      // Flattened: ids beside the component, not inside props.
+      final flat = PresentRequest.validate({
+        'component': 'vehicle_compare',
+        'result_id': 'search-2',
+        'ids': ['L1', 'L4'],
+      }, resultTool: 'find_vehicles');
+      expect(flat.request?.props['ids'], ['L1', 'L4']);
+    });
+
     test('refuses one id, four ids, or no result', () {
       List<String> errors(Object? ids, {String? tool = 'find_vehicles'}) =>
           PresentRequest.validate({
@@ -219,7 +245,8 @@ void main() {
           }, resultTool: tool).errors;
       expect(errors(['L1']).single, contains('2 to $maxCompared'));
       expect(errors(['L1', 'L2', 'L3', 'L4']).single, contains('2 to $maxCompared'));
-      expect(errors('L1').single, contains('list of listing ids'));
+      expect(errors('L1').single, contains('2 to $maxCompared'));
+      expect(errors({'a': 1}).single, contains('list of listing ids'));
       expect(errors(['L1', 'L2'], tool: null).single, contains('does not match'));
     });
   });

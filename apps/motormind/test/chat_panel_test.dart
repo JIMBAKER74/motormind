@@ -75,9 +75,8 @@ class ScriptedDriver implements ChatDriver {
       await onToolCall('present', {
         'component': 'vehicle_compare',
         'result_id': opened.group(1),
-        'props': {
-          'ids': [opened.group(2), opened.group(3)],
-        },
+        // Top level, as the tool declares it and as Gemma sends it.
+        'ids': [opened.group(2), opened.group(3)],
       });
       yield const DriverText('Here they are side by side.');
     } else if (userText.contains('long story')) {
@@ -605,6 +604,8 @@ void main() {
       expect(stage.focused!.request.component.id, 'vehicle_compare');
       expect(find.byKey(const Key('compare-L1')), findsOneWidget);
       expect(find.byKey(const Key('compare-L2')), findsOneWidget);
+      // Beside the listings, not in place of them.
+      expect(stage.cards.map((c) => c.request.component.id), contains('vehicle_card'));
       // Its stats say what started it.
       expect(s.container.read(turnStatsProvider).first.trigger, TurnTrigger.signal);
     });

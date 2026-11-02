@@ -197,6 +197,15 @@ final class ChatService extends Notifier<ChatState> {
         'keyboard ${ref.read(keyboardOpenProvider) ? 'up' : 'down'}.]';
   }
 
+  /// A value's shape: map keys with their shapes, a list's length and its
+  /// first element's shape, else the type name. No values.
+  static String _shape(Object? v) => switch (v) {
+    final Map m => '{${m.entries.map((e) => '${e.key}: ${_shape(e.value)}').join(', ')}}',
+    final List l => 'List(${l.length})${l.isEmpty ? '' : ' of ${_shape(l.first)}'}',
+    null => 'null',
+    _ => v.runtimeType.toString(),
+  };
+
   static String _clip(String s) =>
       s.length <= _screenQuestionChars ? s : '${s.substring(0, _screenQuestionChars)}…';
 
@@ -346,8 +355,11 @@ final class ChatService extends Notifier<ChatState> {
             updateReply(reply.copyWith(text: reply.text + text));
           case ThinkingDelta():
             break;
-          case ToolStarted(:final name):
+          case ToolStarted(:final name, :final args):
             logDev('tool $name');
+            // The shape of a present call (keys and value types, no values),
+            // so a call the registry refuses can be read off the log.
+            if (name == AdvisorTools.present) logDev('present shape: ${_shape(args)}');
             tools.add((name, clock.elapsedMilliseconds));
             state = state.copyWith(activeTool: name);
           case ToolFinished():
@@ -359,6 +371,7 @@ final class ChatService extends Notifier<ChatState> {
             // The live search already put this result on the stage.
             break;
           case Presented(:final request, :final result):
+            logDev('presented ${request.component.id}${result == null ? '' : ' (${result.id})'}');
             final surface = ref.read(surfaceProvider);
             final toStage =
                 !request.component.isInteraction &&
@@ -391,7 +404,10 @@ final class ChatService extends Notifier<ChatState> {
             }
           case InputRejected(:final arguments):
             state = state.copyWith(guardNote: ChatStrings.refusedInputs(arguments));
-          case PresentRejected():
+          case PresentRejected(:final errors):
+            // The registry's own words about the model's call: component
+            // ids and field names, never values the person gave.
+            logDev('present rejected: ${errors.join('; ')}');
             state = state.copyWith(clearActiveTool: true);
           case GuardTripped(:final report, :final replaced):
             state = state.copyWith(
@@ -549,10 +565,15 @@ final class ChatService extends Notifier<ChatState> {
     if (result == null || opened.length < 2 || !state.ready || state.busy) return;
     if (!_noticedCards.add(card.id)) return;
     final names = opened.map((l) => '${l.id} ${l.title}').join('; ');
+    final ids = opened.map((l) => '"${l.id}"').join(', ');
+    // The exact call is spelled out: given only a description, Gemma 4 E2B
+    // took the cue but re-presented the listings card instead of the
+    // compare (headless emulator, 2026-11-02). It still decides whether to
+    // make the call at all.
     await _send(
-      '[The person opened two listings from ${result.id}: $names. If seeing them side by side '
-      'would help, present vehicle_compare with result_id ${result.id} and props.ids; '
-      'otherwise say nothing.]',
+      '[The person opened two listings from ${result.id}: $names. To show them side by side, '
+      'call present with component vehicle_compare, result_id ${result.id} and ids [$ids], '
+      'and say one short line; if that would not help, say nothing.]',
       trigger: TurnTrigger.signal,
       detail: 'opened-two',
     );

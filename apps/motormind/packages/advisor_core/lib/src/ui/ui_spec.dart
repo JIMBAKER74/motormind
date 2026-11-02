@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:vehicle_finance/vehicle_finance.dart' show enumByName;
 
 /// Where Motormind's surface sits on screen.
@@ -212,7 +214,7 @@ abstract final class ComponentRegistry {
   /// app says the person opened two listings in a row.
   static final vehicleCompare = UiComponent(
     id: 'vehicle_compare',
-    description: '2–3 listings side by side; props {ids:[listing ids]} from a listings result.',
+    description: '2–3 listings side by side; ids: the listing ids, from a listings result.',
     acceptsTools: const {'find_vehicles'},
     validateProps: _validateCompareIds,
   );
@@ -369,7 +371,13 @@ final class PresentRequest {
 
     final resultId = args['result_id']?.toString();
     final takesProps = component.isInteraction || component.validateProps != null;
-    final props = takesProps ? _propsOf(component, args['props']) : null;
+    // A small model often flattens the call and puts a prop beside the
+    // component instead of inside props ({"component": ..., "ids": [...]}).
+    final given = args['props'];
+    final rawProps = (given == null || (given is Map && given.isEmpty))
+        ? _strayProps(args) ?? given
+        : given;
+    final props = takesProps ? _propsOf(component, rawProps) : null;
     if (props != null) errors.addAll(component.validateProps?.call(props) ?? const []);
     if (component.isInteraction) {
       // Built from props alone.
@@ -404,7 +412,18 @@ final class PresentRequest {
   /// the component shows trimmed to the first ones. The copy is what keeps
   /// the caller's map intact.
   static Map<String, Object?> _propsOf(UiComponent component, Object? raw) {
+    // A small model sometimes sends props as a JSON string; read it.
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } on FormatException {
+        raw = null;
+      }
+    }
     final props = raw is Map ? Map<String, Object?>.from(raw) : <String, Object?>{};
+    if (component.id == 'vehicle_compare' && props.containsKey('ids')) {
+      props['ids'] = _listingIds(props['ids']);
+    }
     final max = switch (component.id) {
       'choice' => maxChoiceOptions,
       'multi_choice' => maxMultiChoiceOptions,
@@ -415,6 +434,41 @@ final class PresentRequest {
       props['options'] = options.take(max).toList();
     }
     return props;
+  }
+
+  /// The keys of a present call that are not its own fields, as props, or
+  /// null when there are none.
+  static Map<String, Object?>? _strayProps(Map<String, Object?> args) {
+    const own = {'component', 'result_id', 'surface', 'title', 'highlights', 'props'};
+    final stray = {
+      for (final e in args.entries)
+        if (!own.contains(e.key)) e.key: e.value,
+    };
+    return stray.isEmpty ? null : stray;
+  }
+
+  /// Listing ids in the shapes a small model writes them: a list of
+  /// strings, a single string ("L1, L2" or "[L1, L2]"), or numbers (2
+  /// meaning L2). Gemma 4 E2B took the compare cue and had the call
+  /// refused over this formatting (headless emulator, 2026-11-02); a
+  /// refused call leaves the person with nothing, so the shape is read
+  /// rather than refused. Anything else is left for validation to reject.
+  static Object? _listingIds(Object? raw) {
+    String norm(Object v) {
+      final t = v.toString().replaceAll(RegExp(r'''[\[\]"' ]'''), '');
+      return RegExp(r'^\d+$').hasMatch(t) ? 'L$t' : t;
+    }
+
+    if (raw is String) {
+      return [
+        for (final part in raw.split(RegExp(r'[,;\s]+')))
+          if (norm(part).isNotEmpty) norm(part),
+      ];
+    }
+    if (raw is List && raw.every((v) => v is String || v is num)) {
+      return [for (final v in raw) norm(v as Object)];
+    }
+    return raw;
   }
 
   /// The requested surface, or null when the model left it to the default.

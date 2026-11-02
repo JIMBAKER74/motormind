@@ -318,6 +318,13 @@ class TurnPipeline {
     StreamController<TurnEvent> out,
     Map<String, Object?> args,
   ) async {
+    // A compare that names listing ids but no result: the most recent
+    // listings result holding all of them is the only sensible one (Gemma
+    // 4 E2B left result_id out on the emulator, 2026-11-02).
+    if (args['result_id'] == null && args['component'] == 'vehicle_compare') {
+      final found = _resultHoldingListings(args['ids'] ?? (args['props'] as Map?)?['ids']);
+      if (found != null) args = {...args, 'result_id': found.id};
+    }
     final resultId = args['result_id']?.toString();
     final target = resultId == null ? null : _results[resultId];
     final v = PresentRequest.validate(args, resultTool: target?.tool);
@@ -355,7 +362,24 @@ class TurnPipeline {
     return r.toModelJson();
   }
 
-  /// Stores [r] for `present`, announces it, and shows its default card.
+  /// The newest listings result whose listings include every id in [ids]
+  /// (strings like "L2"), or null.
+  ToolResult? _resultHoldingListings(Object? ids) {
+    if (ids is! List || ids.isEmpty) return null;
+    final wanted = ids.map((i) => '$i').toSet();
+    for (final r in _results.values.toList().reversed) {
+      if (r.tool != AdvisorTools.findVehicles) continue;
+      final listings = r.result?['listings'];
+      if (listings is! List) continue;
+      final have = {
+        for (final l in listings)
+          if (l is Map) '${l['id']}',
+      };
+      if (have.containsAll(wanted)) return r;
+    }
+    return null;
+  }
+
   /// Makes a result the app produced on its own (the live search's
   /// listings on the stage) referable by the model's `present` calls, so
   /// the model can, for instance, compare two listings the person opened.
@@ -363,6 +387,7 @@ class TurnPipeline {
   /// screen. Its numbers are page content and authorize nothing.
   void remember(ToolResult r) => _results[r.id] = r;
 
+  /// Stores [r] for `present`, announces it, and shows its default card.
   void _record(StreamController<TurnEvent> out, List<ToolResult> turnResults, ToolResult r) {
     _results[r.id] = r;
     turnResults.add(r);
