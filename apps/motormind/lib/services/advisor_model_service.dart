@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_diagnostics/flutter_edge_ai_diagnostics.dart';
@@ -345,6 +346,14 @@ final class AdvisorModelService extends AsyncNotifier<ModelsState> {
 /// the full window and gives anything tighter the floor.
 const _comfortableFreeGb = 4.0;
 
+/// Total memory below which the window stays at [minimumWindow] however
+/// much is free at launch. A 6 GB emulator reported exactly 4.0 GB free,
+/// got the 8,192 window, and was killed by Android's low-memory killer
+/// during its first prefill while a web page reloaded (2026-11-02); the
+/// Fold 4 (12 GB) runs the full window. An "8 GB" phone reports about
+/// 7.3 to 7.6 GB.
+const _fullWindowTotalGb = 7.0;
+
 /// The smallest window a conversation can start in, whatever the memory.
 /// The first turn alone is about 2,800 tokens (a ~740-token system
 /// instruction, ~2,000 tokens of tool declarations, the person's message),
@@ -360,8 +369,12 @@ const int minimumWindow = 4096;
 Future<int> contextWindowFor(AdvisorModelSpec spec) async {
   final gb = await availableMemoryGb();
   if (gb == null) return spec.maxTokens;
-  final window = windowForFreeMemory(gb, ceiling: spec.maxTokens);
-  logDev('available memory ${gb.toStringAsFixed(1)} GB -> context $window');
+  final total = await totalMemoryGb();
+  final window = windowForFreeMemory(gb, ceiling: spec.maxTokens, totalGb: total);
+  logDev(
+    'available memory ${gb.toStringAsFixed(1)} GB of '
+    '${total?.toStringAsFixed(1) ?? '?'} GB -> context $window',
+  );
   return window;
 }
 
@@ -380,7 +393,22 @@ Future<double?> availableMemoryGb() async {
 
 /// The pure part of [contextWindowFor]: the window for [freeGb] of free
 /// memory, never above [ceiling].
-int windowForFreeMemory(double freeGb, {required int ceiling}) {
-  if (freeGb >= _comfortableFreeGb) return ceiling;
+int windowForFreeMemory(double freeGb, {required int ceiling, double? totalGb}) {
+  final roomy = freeGb >= _comfortableFreeGb && (totalGb == null || totalGb >= _fullWindowTotalGb);
+  if (roomy) return ceiling;
   return ceiling < minimumWindow ? ceiling : minimumWindow;
+}
+
+/// The device's total memory in GB from `/proc/meminfo` on Android; null
+/// elsewhere or when it cannot be read (the free-memory rule then decides).
+Future<double?> totalMemoryGb() async {
+  if (!Platform.isAndroid) return null;
+  try {
+    final m = RegExp(r'MemTotal:\s+(\d+) kB')
+        .firstMatch(await File('/proc/meminfo').readAsString());
+    return m == null ? null : int.parse(m.group(1)!) / (1024 * 1024);
+  } on Exception catch (e) {
+    logDev('total memory unreadable: $e');
+    return null;
+  }
 }

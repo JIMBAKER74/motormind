@@ -268,7 +268,10 @@ final class ChatService extends Notifier<ChatState> {
     var reply = const ChatMessage(role: MessageRole.motormind, text: '', streaming: true);
     // The obvious filters in a sentence ("a Honda sports car under 40k") apply
     // before the model has read it, so the page is already changing.
-    if (!quiet) ref.read(searchProvider.notifier).updateFromText(text);
+    // Only from what the person typed: a sentence the app writes for them
+    // ("…, listed at \$14,496, cost me a month?") once set the search to
+    // Hyundai under \$14,496 and reloaded the page mid-turn.
+    if (trigger == TurnTrigger.typed) ref.read(searchProvider.notifier).updateFromText(text);
     // The model is told the current search (it cannot see the card); the
     // bubble shows only what the person typed.
     final search = ref.read(searchProvider);

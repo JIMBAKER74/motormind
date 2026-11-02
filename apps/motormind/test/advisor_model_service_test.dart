@@ -174,6 +174,10 @@ void main() {
   test('the context window shrinks with free memory and never grows past the catalog', () {
     expect(windowForFreeMemory(8.0, ceiling: 8192), 8192);
     expect(windowForFreeMemory(4.5, ceiling: 8192), 8192); // the Fold 4 at launch
+    expect(windowForFreeMemory(4.5, ceiling: 8192, totalGb: 11.5), 8192);
+    // A 6 GB device with 4 GB free was killed during its first prefill at
+    // 8,192; it gets the floor.
+    expect(windowForFreeMemory(4.0, ceiling: 8192, totalGb: 5.8), minimumWindow);
     expect(windowForFreeMemory(3.5, ceiling: 8192), 4096);
     // Never below the floor the first turn needs, however tight memory is
     // (a 4 GB emulator with 2.1 GB free got 2,048 and refused every turn).

@@ -549,6 +549,9 @@ void main() {
         endsWith('What would the 2021 Honda CR-V EX, listed at \$27,995, cost me a month?'),
       );
       expect(s.container.read(turnStatsProvider).first.trigger, TurnTrigger.tileCost);
+      // The app wrote that sentence; it does not become a search for Hondas
+      // under \$27,995.
+      expect(s.container.read(searchProvider).query.isEmpty, isTrue);
     });
 
     testWidgets('dead taps on the stage make Motormind ask; a bigger view follows', (tester) async {
