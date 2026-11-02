@@ -114,4 +114,10 @@ abstract final class ChatStrings {
       'Looking for $query on $site: $matched matched.';
 
   static String monthlyCostOf(String title) => 'What would the $title cost me a month?';
+
+  /// The listings card's "more" control: how many of the site's total are
+  /// on the card.
+  static String moreFrom(String site, int shown, int total) => 'More from $site ($shown of $total)';
+
+  static String readingMoreFrom(String site) => 'Reading more from $site…';
 }

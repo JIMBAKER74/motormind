@@ -12,6 +12,8 @@ import '../chat/cards/formatting.dart';
 import '../chat/chat_service.dart';
 import '../chat/chat_strings.dart';
 import '../chat/turn_stats.dart';
+import '../recipes/recipe_store.dart';
+import '../search/search_service.dart';
 import 'listing_cache.dart';
 import 'listing_signals.dart';
 
@@ -122,7 +124,29 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
                     detail: 'tile ${listings.indexOf(l) + 1}',
                   ),
             ),
+        ?_moreControl(listings.length),
       ],
+    );
+  }
+
+  /// "More from EchoPark (22 of 347)" when the site reports more cars than
+  /// the card holds and its page parameter is known; null otherwise.
+  Widget? _moreControl(int shown) {
+    final search = ref.watch(searchProvider);
+    final site = CuratedSites.byId(search.siteId);
+    final total = ref.watch(lastReadsProvider)[search.siteId]?.check.pageTotal;
+    if (site?.pageParam == null || total == null || shown == 0 || shown >= total) return null;
+    return Center(
+      child: TextButton.icon(
+        key: const Key('more-listings'),
+        onPressed: search.applying ? null : ref.read(searchProvider.notifier).loadMore,
+        icon: const Icon(Icons.expand_more),
+        label: Text(
+          search.applying
+              ? ChatStrings.readingMoreFrom(site!.name)
+              : ChatStrings.moreFrom(site!.name, shown, total),
+        ),
+      ),
     );
   }
 }

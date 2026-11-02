@@ -11,6 +11,7 @@ class CuratedSite {
     required this.name,
     required this.home,
     required this.search,
+    this.pageParam,
   });
 
   /// Stable identifier; a `ReadingRecipe.siteId` refers to it.
@@ -27,21 +28,29 @@ class CuratedSite {
   final String Function({double? minPrice, double? maxPrice, String? bodyStyle, String? keywords})
   search;
 
+  /// The query parameter that selects a results page (`page=2`), for sites
+  /// whose pagination was seen in a capture; null for the rest, which then
+  /// offer no "more" control.
+  final String? pageParam;
+
   /// Results URL for a live [SearchQuery]. Make, model and keywords ride in
   /// the keyword slot; sites that ignore a parameter still list inventory,
-  /// and the app filters what it reads.
-  String urlFor(SearchQuery q) {
+  /// and the app filters what it reads. A [page] above 1 adds [pageParam].
+  String urlFor(SearchQuery q, {int page = 1}) {
     final keywords = [
       q.make,
       q.model,
       q.keywords,
     ].whereType<String>().where((s) => s.isNotEmpty).join(' ');
-    return search(
+    final url = search(
       minPrice: q.minPrice,
       maxPrice: q.maxPrice,
       bodyStyle: q.bodyStyle,
       keywords: keywords.isEmpty ? null : keywords,
     );
+    final param = pageParam;
+    if (page <= 1 || param == null) return url;
+    return '$url${url.contains('?') ? '&' : '?'}$param=$page';
   }
 }
 
@@ -59,6 +68,9 @@ abstract final class CuratedSites {
     id: 'echopark',
     name: 'EchoPark',
     home: 'https://www.echopark.com/',
+    // From the results page's own pagination links (Page 1, 2, 3, Next),
+    // captured 2026-10-12: /used-cars?page=2.
+    pageParam: 'page',
     search: ({minPrice, maxPrice, bodyStyle, keywords}) =>
         _url('https://www.echopark.com/used-cars', [
           if (bodyStyle != null) 'bodyStyle=${_encode(_body(bodyStyle))}',

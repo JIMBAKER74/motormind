@@ -21,6 +21,7 @@ class SearchState {
     this.applying = false,
     this.lastCount,
     this.note,
+    this.page = 1,
   });
 
   final SearchQuery query;
@@ -43,6 +44,9 @@ class SearchState {
   /// Why the last read produced nothing, in a sentence for the person.
   final String? note;
 
+  /// Results pages read for this search, from 1; "more" reads the next.
+  final int page;
+
   /// The display name of [siteId].
   String get siteName => CuratedSites.nameFor(siteId);
 
@@ -55,6 +59,7 @@ class SearchState {
     int? lastCount,
     String? note,
     bool clearNote = false,
+    int? page,
   }) => SearchState(
     query: query ?? this.query,
     siteId: siteId ?? this.siteId,
@@ -62,6 +67,7 @@ class SearchState {
     applying: applying ?? this.applying,
     lastCount: lastCount ?? this.lastCount,
     note: clearNote ? null : (note ?? this.note),
+    page: page ?? this.page,
   );
 }
 
@@ -212,10 +218,23 @@ final class SearchService extends Notifier<SearchState> {
 
   /// Opens the site's results page for the query, reads it, and shows what
   /// matched. Safe to call repeatedly; a newer call wins.
-  Future<void> apply() async {
+  Future<void> apply() => _read(page: 1);
+
+  /// Reads the site's next results page for the same search and adds its
+  /// cars to the card: one page per tap, as the site's own "next" arrow
+  /// would. Only for sites whose page parameter is known.
+  Future<void> loadMore() async {
+    if (state.applying || site.pageParam == null) return;
+    await _read(page: state.page + 1);
+  }
+
+  /// Opens results page [page] for the query, reads it, remembers what it
+  /// found, and shows every match read so far. Safe to call repeatedly; a
+  /// newer call wins.
+  Future<void> _read({required int page}) async {
     final gen = ++_generation;
     final q = state.query;
-    final url = site.urlFor(q);
+    final url = site.urlFor(q, page: page);
     // The stage keeps the cards while the page is read; it shows the page
     // as a labeled strip above them (the stage view decides from
     // `applying`). Flipping to the full page here took the screen from the
@@ -235,8 +254,8 @@ final class SearchService extends Notifier<SearchState> {
       unawaited(cache.save(siteId, fresh));
       // Every listing that matched goes on the stage (the card scrolls); the
       // model's own tool keeps its small limit for the context's sake.
-      final results = store.searchQuery(q, limit: stageListingLimit);
-      state = state.copyWith(applying: false, lastCount: results.length);
+      final results = store.searchQuery(q, limit: stageListingLimit * page);
+      state = state.copyWith(applying: false, lastCount: results.length, page: page);
       // A failed or empty first read leaves the remembered cards in place
       // rather than replacing them with "no listings".
       if (results.isEmpty && _showingRemembered) return;
