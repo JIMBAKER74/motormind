@@ -275,7 +275,8 @@ abstract final class AdvisorTools {
       changesUi: true,
       description:
           'Show a component. After a tool: component + result_id. For a question with a few '
-          'answers, or numbers to collect: choice, multi_choice or input_form with props, not prose.',
+          'answers: choice (or multi_choice) with question and options; for numbers to '
+          'collect: input_form with fields. Never as prose.',
       parameters: _object(
         {
           'component': _string(description: 'registry id'),
@@ -287,18 +288,33 @@ abstract final class AdvisorTools {
             'items': _string(),
             'description': 'result field names to emphasize',
           },
-          // Declared at the top level on purpose: inside the undeclared
-          // props object Gemma 4 E2B sent {} every time (the call's shape,
-          // logged on the emulator, 2026-11-02).
+          // The components' own fields are declared here at the top level,
+          // each with its shape. Inside an object declared without fields
+          // ("props"), Gemma 4 E2B sent {} every time (the call's shape,
+          // logged on the emulator, 2026-11-02); the pipeline still accepts
+          // props for callers that send it.
           'ids': {
             'type': 'array',
             'items': _string(),
             'description': 'vehicle_compare: the listing ids to show side by side',
           },
-          'props': {
-            'type': 'object',
-            'description':
-                'choice/multi_choice: {question, options:[{id,label}]}; input_form: {title, fields:[{id,label,type(number|currency|percent|text|select),options?}]}',
+          'question': _string(description: 'choice/multi_choice: the question'),
+          'options': {
+            'type': 'array',
+            'description': 'choice/multi_choice: 2 to 6 answers',
+            'items': _object({'id': _string(), 'label': _string()}, required: ['id', 'label']),
+          },
+          'fields': {
+            'type': 'array',
+            'description': 'input_form: 1 to 6 fields',
+            'items': _object(
+              {
+                'id': _string(),
+                'label': _string(),
+                'type': _string(values: ['number', 'currency', 'percent', 'text', 'select']),
+              },
+              required: ['id', 'label', 'type'],
+            ),
           },
         },
         required: ['component'],

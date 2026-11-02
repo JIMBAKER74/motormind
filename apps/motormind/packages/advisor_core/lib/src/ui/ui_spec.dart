@@ -107,6 +107,16 @@ List<String> _validateOptions(Map<String, Object?> props, {required int max}) {
 /// Most listings a compare shows; a fourth column does not fit a phone.
 const int maxCompared = 3;
 
+/// Optional listing ids on a listings card: absent shows all.
+List<String> _validatePickedIds(Map<String, Object?> props) {
+  final ids = props['ids'];
+  if (ids == null) return const [];
+  if (ids is! List || ids.isEmpty || ids.any((i) => i is! String)) {
+    return ['ids must be a list of listing ids'];
+  }
+  return const [];
+}
+
 List<String> _validateCompareIds(Map<String, Object?> props) {
   final ids = props['ids'];
   if (ids is! List || ids.any((i) => i is! String)) {
@@ -202,11 +212,13 @@ abstract final class ComponentRegistry {
     defaultSurface: SurfaceState.fullscreen,
   );
 
-  /// One listing from `find_vehicles` or `read_page`.
-  static const vehicleCard = UiComponent(
+  /// Listings from `find_vehicles` or `read_page`; with `ids`, only those
+  /// (the model's own pick, as Gemma 4 E2B asked for on the emulator).
+  static final vehicleCard = UiComponent(
     id: 'vehicle_card',
-    description: 'One listing.',
-    acceptsTools: {'find_vehicles', 'read_page'},
+    description: 'Listings; ids: only these listings, from a listings result.',
+    acceptsTools: const {'find_vehicles', 'read_page'},
+    validateProps: _validatePickedIds,
   );
 
   /// Two or three listings side by side, from a listings result; `props.ids`
@@ -421,7 +433,7 @@ final class PresentRequest {
       }
     }
     final props = raw is Map ? Map<String, Object?>.from(raw) : <String, Object?>{};
-    if (component.id == 'vehicle_compare' && props.containsKey('ids')) {
+    if (props.containsKey('ids')) {
       props['ids'] = _listingIds(props['ids']);
     }
     final max = switch (component.id) {

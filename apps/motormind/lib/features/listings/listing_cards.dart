@@ -43,7 +43,12 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final r = widget.shown.result?.result ?? const {};
-    final listings = listingsOf(widget.shown.result);
+    // The model may pick which listings to show (ids); otherwise all.
+    final picked = (widget.shown.request.props['ids'] as List?)?.cast<String>().toSet();
+    final listings = [
+      for (final l in listingsOf(widget.shown.result))
+        if (picked == null || picked.contains(l.id)) l,
+    ];
     final signals = ref.watch(listingSignalsProvider);
     final signalsNotifier = ref.read(listingSignalsProvider.notifier);
     final bigPhoto = ref.watch(bigPhotoProvider);

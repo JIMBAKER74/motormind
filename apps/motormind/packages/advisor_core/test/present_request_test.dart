@@ -250,4 +250,26 @@ void main() {
       expect(errors(['L1', 'L2'], tool: null).single, contains('does not match'));
     });
   });
+
+  test('a choice or a form sent flat, as the tool now declares it, is accepted', () {
+    final choice = PresentRequest.validate({
+      'component': 'choice',
+      'question': 'Which matters more?',
+      'options': [
+        {'id': 'price', 'label': 'Price'},
+        {'id': 'miles', 'label': 'Miles'},
+      ],
+    }, resultTool: null);
+    expect(choice.errors, isEmpty);
+    expect(choice.request!.props['question'], 'Which matters more?');
+    final form = PresentRequest.validate({
+      'component': 'input_form',
+      'title': 'A few numbers',
+      'fields': [
+        {'id': 'down', 'label': 'Cash down', 'type': 'currency'},
+      ],
+    }, resultTool: null);
+    expect(form.errors, isEmpty);
+    expect((form.request!.props['fields'] as List).single, containsPair('id', 'down'));
+  });
 }

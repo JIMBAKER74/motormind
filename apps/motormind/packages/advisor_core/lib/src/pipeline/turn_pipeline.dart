@@ -321,7 +321,8 @@ class TurnPipeline {
     // A compare that names listing ids but no result: the most recent
     // listings result holding all of them is the only sensible one (Gemma
     // 4 E2B left result_id out on the emulator, 2026-11-02).
-    if (args['result_id'] == null && args['component'] == 'vehicle_compare') {
+    const pickers = {'vehicle_compare', 'vehicle_card'};
+    if (args['result_id'] == null && pickers.contains(args['component'])) {
       final found = _resultHoldingListings(args['ids'] ?? (args['props'] as Map?)?['ids']);
       if (found != null) args = {...args, 'result_id': found.id};
     }
