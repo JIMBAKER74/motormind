@@ -1,3 +1,5 @@
+import 'package:advisor_core/advisor_core.dart';
+
 /// Every sentence the chat shows the person, in one place, so wording is a
 /// reviewable diff rather than a scavenger hunt (the same rule disclosures
 /// follow in `advisor_core`).
@@ -22,6 +24,20 @@ abstract final class ChatStrings {
   static const somethingWrong = 'Something went wrong.';
   static const numbersReplaced =
       'Motormind\'s wording was replaced because it contained numbers not from a calculation.';
+
+  /// What Motormind says after a shopping mode is chosen, when the model
+  /// recorded the mode and said nothing (Gemma 4 E2B often ends a turn
+  /// right after a tool call). Each points at what the screen now offers.
+  static String afterMode(ShoppingMode mode) => switch (mode) {
+    ShoppingMode.browsing =>
+      'Take a look around. Tap a type or a price, or tell me what catches your eye.',
+    ShoppingMode.dreaming => 'Let\'s dream a little. Pick a kind below, or name the car.',
+    ShoppingMode.practical =>
+      'Let\'s find something that fits. Fill in what you know below, or just tell me.',
+    ShoppingMode.buying =>
+      'Let\'s work through the numbers. Fill in what you know below, or just tell me.',
+  };
+
   static const nothingToAdd =
       'Nothing to add yet. Pick an option above, change a filter, or tell me more.';
   static const hereIsWhatIFound = 'Here is what I found. Tell me more when you are ready.';

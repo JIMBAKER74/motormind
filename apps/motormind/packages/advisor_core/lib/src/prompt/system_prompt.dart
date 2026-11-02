@@ -121,11 +121,18 @@ class SystemPromptBuilder {
     // alone never reached the model (design notes, DD-Q23, option c).
     final modes = [
       for (final m in ShoppingMode.values)
-        if (modeGuidance[m] case final g?) '${m.name}: ${g.trim().replaceAll('\n', ' ')}',
+        if (modeGuidance[m] case final g?)
+          '- When the person is ${m.words}: ${g.trim().replaceAll('\n', ' ')}',
     ];
     if (modes.isNotEmpty) {
       buffer
-        ..writeln('# Shopping modes (the current one is named with each message)')
+        // Worded as guidance to follow, not something to say: "the current
+        // one is named with each message" made Gemma 4 E2B reply with the
+        // bare word "browsing" (headless emulator, 2026-11-02).
+        ..writeln(
+          '# How to speak in each shopping mode (the [Screen] line says which applies; '
+          'never just repeat the mode)',
+        )
         ..writeln(modes.join('\n'))
         ..writeln();
     }

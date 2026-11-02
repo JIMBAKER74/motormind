@@ -32,6 +32,21 @@ enum ShoppingMode {
   buying,
 }
 
+/// How a mode reads in a prompt: the person's own words, not the enum name.
+/// A bare mode name at the start of a prompt line ("browsing: ...") made
+/// Gemma 4 E2B answer "just looking" with the single word "browsing"
+/// (headless emulator, 2026-11-02); the name stays only in the tool's
+/// parameter list, where the model must use it.
+extension ShoppingModeWords on ShoppingMode {
+  /// "just looking", "dreaming", "after practical options", "buying now".
+  String get words => switch (this) {
+    ShoppingMode.browsing => 'just looking',
+    ShoppingMode.dreaming => 'dreaming',
+    ShoppingMode.practical => 'after practical options',
+    ShoppingMode.buying => 'buying now',
+  };
+}
+
 /// Something the person said they are looking for. The person labels it;
 /// Motormind only proposes a label and asks.
 class ProfileItem {

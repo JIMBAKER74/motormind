@@ -16,8 +16,8 @@ void main() {
     expect(prompt, startsWith('You are Motormind.'));
     expect(prompt, contains('# Rules\nNever sell.'));
     // Every mode's guidance travels; the current one is named per message.
-    expect(prompt, contains('# Shopping modes'));
-    expect(prompt, contains('practical: Be concrete.'));
+    expect(prompt, contains('# How to speak in each shopping mode'));
+    expect(prompt, contains('- When the person is after practical options: Be concrete.'));
     expect(
       prompt,
       contains('# Known about this person: shopping mode: practical; payment ceiling: \$450/mo'),
@@ -52,7 +52,7 @@ void main() {
     final prompt = builder.build(profile: const BuyerProfile());
     expect(prompt, contains('Mode unknown until the person says'));
     // The guidance is there anyway, for when the mode is chosen mid-session.
-    expect(prompt, contains('practical: Be concrete.'));
+    expect(prompt, contains('- When the person is after practical options: Be concrete.'));
     expect(prompt, isNot(contains('# Viewport')));
     expect(prompt, contains('nothing known yet'));
   });

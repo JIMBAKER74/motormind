@@ -67,7 +67,10 @@ class ScriptedDriver implements ChatDriver {
   Stream<DriverChunk> _reply(String userText, ToolCallHandler onToolCall) async* {
     final opened = RegExp(r'opened two listings from (\S+): (L\d+) .*; (L\d+) ')
         .firstMatch(userText);
-    if (opened != null) {
+    if (userText.endsWith("I'm buying now and want to work through the numbers.")) {
+      // What Gemma 4 E2B did on the emulator: record the mode, say nothing.
+      await onToolCall('update_profile', {'shopping_mode': 'buying'});
+    } else if (opened != null) {
       // What a model that takes the cue does: show the two side by side.
       await onToolCall('present', {
         'component': 'vehicle_compare',
@@ -339,6 +342,18 @@ void main() {
   });
 
   group('prompts and the escape', () {
+    testWidgets('a mode chosen and answered with silence gets a sentence for that mode', (
+      tester,
+    ) async {
+      final s = await _start(tester);
+      await _chooseMode(tester, s, 'buying');
+      final replies = s.container
+          .read(chatServiceProvider)
+          .messages
+          .where((m) => m.role == MessageRole.motormind);
+      expect(replies.last.text, ChatStrings.afterMode(ShoppingMode.buying));
+    });
+
     testWidgets('the model is told what is on screen, and only when it changed', (tester) async {
       final s = await _start(tester, fullscreen: false);
       // Turns whose replies are text only, so nothing on screen changes.
@@ -348,7 +363,12 @@ void main() {
         () => s.container.read(chatServiceProvider.notifier).send('just looking around'),
       );
       final first = s.driver.prompts.last;
-      expect(first, contains('[Screen: mode unknown; stage cards: listings search-'));
+      expect(
+        first,
+        contains(
+          '[Screen: the person is not yet saying how they shop; stage cards: listings search-',
+        ),
+      );
       expect(first, contains('L1-L2, 2 cars, focused'));
       expect(first, contains('choice "How are you shopping today?"'));
       expect(first, contains('keyboard down.]'));
@@ -407,7 +427,8 @@ void main() {
       final s = await _start(tester);
       await _chooseMode(tester, s, 'practical');
       expect(s.container.read(chatServiceProvider.notifier).profile.mode, ShoppingMode.practical);
-      expect(s.driver.prompts.single, startsWith('I want practical options'));
+      // The person's words come last, after the app's context lines.
+      expect(s.driver.prompts.single, endsWith('I want practical options that fit my budget.'));
       expect(find.byKey(const Key('card-search_filters')), findsOneWidget);
     });
 

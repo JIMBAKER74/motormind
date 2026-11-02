@@ -191,7 +191,7 @@ final class ChatService extends Notifier<ChatState> {
               ? 'filters card (${ref.read(searchProvider).query.isEmpty ? 'nothing set' : 'set'})'
               : '${e.shown.request.component.id} "${_clip('${e.shown.request.props['question'] ?? e.shown.request.props['title'] ?? ''}')}"',
     ];
-    return '[Screen: mode ${mode?.name ?? 'unknown'}; '
+    return '[Screen: the person is ${mode?.words ?? 'not yet saying how they shop'}; '
         'stage ${stage.mode.name}${parts.isEmpty ? '' : ': ${parts.join('; ')}'}; '
         'conversation: ${live.isEmpty ? 'nothing waiting' : live.join('; ')}; '
         'keyboard ${ref.read(keyboardOpenProvider) ? 'up' : 'down'}.]';
@@ -294,7 +294,12 @@ final class ChatService extends Notifier<ChatState> {
     final screen = _screenLine(pipeline.profile.mode);
     final screenContext = screen == _lastScreenLine ? '' : '\n$screen';
     _lastScreenLine = screen;
-    final prompt = text.trim() + searchContext + signalContext + screenContext;
+    // The app's context lines first and the person's words last: a small
+    // model continues what it reads last, and with the screen line last it
+    // replied with the bare mode name ("browsing [shopping_mode: browsing]",
+    // headless emulator, 2026-11-02).
+    final context = (searchContext + signalContext + screenContext).trim();
+    final prompt = context.isEmpty ? text.trim() : '$context\n\n${text.trim()}';
     final promptChars = prompt.length;
     // What is on the stage can be named by the model (compare two listings).
     for (final c in ref.read(stageProvider).cards) {
@@ -409,9 +414,12 @@ final class ChatService extends Notifier<ChatState> {
             // Gemma sometimes ends a turn right after a tool call with no
             // words. The screen must still answer, so the app writes the
             // sentence from what it knows (counts, not the model's numbers).
+            final mode = Starters.openingChoices[detail]?.$1;
             final text = narration.trim().isNotEmpty
                 ? narration
-                : (quiet ? '' : _silentTurnText(results));
+                : quiet
+                ? ''
+                : (mode != null ? ChatStrings.afterMode(mode) : _silentTurnText(results));
             updateReply(reply.copyWith(text: text, streaming: false));
         }
       }
