@@ -337,6 +337,30 @@ void main() {
   });
 
   group('prompts and the escape', () {
+    testWidgets('the model is told what is on screen, and only when it changed', (tester) async {
+      final s = await _start(tester, fullscreen: false);
+      // Turns whose replies are text only, so nothing on screen changes.
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('just looking around'),
+      );
+      final first = s.driver.prompts.last;
+      expect(first, contains('[Screen: mode unknown; stage cards: listings search-'));
+      expect(first, contains('L1-L2, 2 cars, focused'));
+      expect(first, contains('choice "How are you shopping today?"'));
+      expect(first, contains('keyboard down.]'));
+      // Never a price in the screen line.
+      expect(RegExp(r'\[Screen:[^\]]*\$').hasMatch(first), isFalse);
+      // The same screen next turn: no line at all.
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('just looking still'),
+      );
+      expect(s.driver.prompts.last, isNot(contains('[Screen:')));
+    });
+
     testWidgets('a full window reopens the session and sends again, once', (tester) async {
       final s = await _start(tester);
       final opened = s.driver.systemInstructions.length;

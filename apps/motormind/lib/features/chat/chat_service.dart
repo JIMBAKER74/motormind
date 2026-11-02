@@ -118,6 +118,8 @@ final class ChatService extends Notifier<ChatState> {
     }
     await _driver?.close();
     _driver = driver;
+    // A new session has seen no screen line yet.
+    _lastScreenLine = null;
     _pipeline = TurnPipeline(
       driver: driver,
       profile: profile,
@@ -146,6 +148,56 @@ final class ChatService extends Notifier<ChatState> {
   /// Width from which the canvas is described as wide (a tablet or an
   /// unfolded foldable), after Material's window size classes.
   static const _wideWidthDp = 600;
+
+  /// The screen line the model was last given; the next is sent only if it
+  /// differs ("say what changed", design notes principle 16).
+  String? _lastScreenLine;
+
+  /// Longest question text quoted in the screen line.
+  static const _screenQuestionChars = 60;
+
+  /// Most stage components named in the screen line.
+  static const _screenStageItems = 4;
+
+  /// What is on screen, in one bracketed line for the model: the shopping
+  /// mode, the stage's components by id and state, what is live in the
+  /// conversation, the keyboard. Names, ids, counts and states only, never a
+  /// price or the person's numbers (design notes 5.3, the context record).
+  String _screenLine(ShoppingMode? mode) {
+    final stage = ref.read(stageProvider);
+    final focused = stage.focused;
+    final parts = <String>[];
+    for (final c in stage.cards.take(_screenStageItems)) {
+      final id = c.request.component.id;
+      final r = c.result;
+      final focus = identical(c, focused) ? ', focused' : '';
+      final what = switch (id) {
+        'vehicle_card' => switch (listingsOf(r).length) {
+          0 => 'listings (none)',
+          final n => 'listings ${r?.id}: L1-L$n, $n cars',
+        },
+        'vehicle_compare' => 'compare ${(c.request.props['ids'] as List?)?.join(', ') ?? ''}',
+        _ => r == null ? id : '$id ${r.id}',
+      };
+      parts.add('$what$focus');
+    }
+    final live = [
+      for (final e in state.timeline)
+        if (e is ComponentEntry && !e.shown.answered && e.shown.request.component.isInteraction)
+          // From the search, not the display decision: the display
+          // controller watches this service, so reading it here would loop.
+          e.shown.request.component.id == 'search_filters'
+              ? 'filters card (${ref.read(searchProvider).query.isEmpty ? 'nothing set' : 'set'})'
+              : '${e.shown.request.component.id} "${_clip('${e.shown.request.props['question'] ?? e.shown.request.props['title'] ?? ''}')}"',
+    ];
+    return '[Screen: mode ${mode?.name ?? 'unknown'}; '
+        'stage ${stage.mode.name}${parts.isEmpty ? '' : ': ${parts.join('; ')}'}; '
+        'conversation: ${live.isEmpty ? 'nothing waiting' : live.join('; ')}; '
+        'keyboard ${ref.read(keyboardOpenProvider) ? 'up' : 'down'}.]';
+  }
+
+  static String _clip(String s) =>
+      s.length <= _screenQuestionChars ? s : '${s.substring(0, _screenQuestionChars)}…';
 
   void _replaceEntry(int index, TimelineEntry entry) {
     final t = [...state.timeline];
@@ -238,7 +290,10 @@ final class ChatService extends Notifier<ChatState> {
               'site $siteName. Do not ask what kind or what price; they can tap or tell you.]'
         : '\n\n[Already set on the filter card: ${search.query.describe()} on $siteName; '
               '${search.lastCount ?? 0} listings read. Do not ask about these again.]';
-    final prompt = text.trim() + searchContext + signalContext;
+    final screen = _screenLine(pipeline.profile.mode);
+    final screenContext = screen == _lastScreenLine ? '' : '\n$screen';
+    _lastScreenLine = screen;
+    final prompt = text.trim() + searchContext + signalContext + screenContext;
     final promptChars = prompt.length;
     // What is on the stage can be named by the model (compare two listings).
     for (final c in ref.read(stageProvider).cards) {
