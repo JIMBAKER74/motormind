@@ -157,7 +157,19 @@ class _TapWatchState extends ConsumerState<_TapWatch> {
     final box = stageRegionKey.currentContext?.findRenderObject();
     if (box is RenderBox && box.hasSize) {
       final local = box.globalToLocal(global);
-      if (box.paintBounds.contains(local)) return 'the cards';
+      if (box.paintBounds.contains(local)) {
+        // Name the card being tapped, so the model knows which "more
+        // detail" means: told only "the cards", it summarized the web page
+        // while the person was tapping a compare (emulator, 2026-11-02).
+        final focused = ref.read(stageProvider).focused;
+        return switch (focused?.request.component.id) {
+          null => 'the cards',
+          'vehicle_compare' =>
+            'the compare card (${(focused!.request.props['ids'] as List?)?.join(', ') ?? ''})',
+          'vehicle_card' => 'the listings card',
+          final id => 'the ${id.replaceAll('_', ' ')} card',
+        };
+      }
     }
     return 'the Motormind panel';
   }

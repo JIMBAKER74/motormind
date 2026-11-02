@@ -664,7 +664,9 @@ final class ChatService extends Notifier<ChatState> {
         // The cards get the whole screen, or the panel does.
         ref
             .read(surfaceProvider.notifier)
-            .request(region == 'the cards' ? SurfaceState.collapsed : SurfaceState.fullscreen);
+            .request(
+              region == 'the Motormind panel' ? SurfaceState.fullscreen : SurfaceState.collapsed,
+            );
       case 'detail':
         unawaited(
           _send(

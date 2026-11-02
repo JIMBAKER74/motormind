@@ -579,6 +579,9 @@ void main() {
       await tester.pumpAndSettle();
       // On the cards, a bigger view is the cards with the panel out of the way.
       expect(s.container.read(surfaceProvider), SurfaceState.collapsed);
+      // The model hears which card it was, with the next turn.
+      await _turn(tester, s, () => s.container.read(chatServiceProvider.notifier).send('hm'));
+      expect(s.driver.prompts.last, contains('tapped the listings card'));
     });
 
     testWidgets('opening a second listing lets the model choose a side-by-side', (tester) async {
