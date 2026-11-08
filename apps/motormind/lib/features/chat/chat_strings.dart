@@ -68,6 +68,13 @@ abstract final class ChatStrings {
   static const openOnSite = 'Open it on the site';
   static const nothingThanks = 'Nothing, thanks';
 
+  /// The control that sets a question or form aside unanswered (design
+  /// notes DD-R12); the input stays the way to say something else.
+  static const notNow = 'Not now';
+
+  /// What a question set aside collapses to, after its own words.
+  static const setAside = 'set aside';
+
   /// Asked after taps repeated in one place changed nothing on screen.
   static const deadTapQuestion = 'I see you tapping there. What are you looking for?';
   static const lookBigger = 'A bigger view';

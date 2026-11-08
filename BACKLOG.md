@@ -272,6 +272,11 @@ VA-10, then VA-8 and VA-12.
   it may say where the person left off (DD-R14). **Done in code and unit tests.** Open:
   the budget measured on a phone (DD-Q25); the display agent still gets its own one-line
   state, not the record (5.1).
+- **VA-11.1.8** Every structured prompt can be set aside (DD-R12): a "Not now" control
+  on choice and form cards collapses the card to its question, marked "set aside", with
+  no turn; the model hears `the person set aside c7 choice` with the next one. **Done in
+  code and unit tests.** Open: "minimized" (kept on screen, smaller) is not built; the
+  dismiss covers the escape the requirement is for.
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the

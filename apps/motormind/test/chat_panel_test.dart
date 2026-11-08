@@ -521,6 +521,28 @@ void main() {
       );
     });
 
+    testWidgets('a question can be set aside; it collapses and the model hears of it', (
+      tester,
+    ) async {
+      final s = await _start(tester);
+      expect(find.byKey(const Key('card-choice')), findsOneWidget);
+      // No turn needed: it leaves the screen at once.
+      await tester.tap(find.byKey(const Key('dismiss-choice')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('card-choice')), findsNothing);
+      expect(find.textContaining(ChatStrings.setAside), findsOneWidget);
+      expect(s.driver.prompts, isEmpty);
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('just looking around'),
+      );
+      final p = s.driver.prompts.last;
+      expect(p, matches(RegExp(r'changed: the person set aside c\d+ choice')));
+      // Off the active list too: nothing is live in the conversation.
+      expect(p, isNot(contains('conversation expanded')));
+    });
+
     testWidgets('tapping an opening mode chip sets the mode and sends a sentence', (tester) async {
       final s = await _start(tester);
       await _chooseMode(tester, s, 'practical');

@@ -12,18 +12,27 @@ import 'chat_state.dart';
 /// only from the tool result (ADR 0002); interaction components read from the
 /// model's props; app-owned components read from app state.
 class ResultCard extends StatelessWidget {
-  const ResultCard({super.key, required this.shown, required this.onChoice});
+  const ResultCard({super.key, required this.shown, required this.onChoice, this.onDismiss});
 
   final ShownComponent shown;
 
   /// Called when the person answers a choice or submits a form.
   final void Function(String id, String label) onChoice;
 
+  /// Called when the person sets a question or form aside; null where
+  /// prompts cannot be dismissed.
+  final VoidCallback? onDismiss;
+
   @override
   Widget build(BuildContext context) {
     return switch (shown.request.component.id) {
-      'choice' || 'multi_choice' => ChoiceCard(shown: shown, onChoice: onChoice),
-      'input_form' => FormCard(shown: shown, onSubmit: (text) => onChoice('form', text)),
+      'choice' ||
+      'multi_choice' => ChoiceCard(shown: shown, onChoice: onChoice, onDismiss: onDismiss),
+      'input_form' => FormCard(
+        shown: shown,
+        onSubmit: (text) => onChoice('form', text),
+        onDismiss: onDismiss,
+      ),
       'search_filters' => const SearchFiltersCard(),
       'payment_summary' => PaymentSummaryCard(shown: shown),
       'payment_breakdown' => PaymentBreakdownCard(shown: shown),

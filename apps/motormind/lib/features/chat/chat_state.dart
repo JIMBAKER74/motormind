@@ -58,6 +58,7 @@ class ShownComponent {
     required this.request,
     this.result,
     this.answered = false,
+    this.dismissed = false,
   });
 
   /// Identity that survives [copyWith], so "mark answered" finds the card
@@ -72,8 +73,17 @@ class ShownComponent {
   /// collapsed so the conversation keeps its history without live buttons.
   final bool answered;
 
-  ShownComponent copyWith({bool? answered}) =>
-      ShownComponent(id: id, request: request, result: result, answered: answered ?? this.answered);
+  /// True when the person set the prompt aside rather than answering it;
+  /// [answered] is then true as well, so it leaves the screen the same way.
+  final bool dismissed;
+
+  ShownComponent copyWith({bool? answered, bool? dismissed}) => ShownComponent(
+    id: id,
+    request: request,
+    result: result,
+    answered: answered ?? this.answered,
+    dismissed: dismissed ?? this.dismissed,
+  );
 }
 
 /// Runs [args] (the `present` tool's shape) through the registry and wraps

@@ -873,6 +873,23 @@ final class ChatService extends Notifier<ChatState> {
     return true;
   }
 
+  /// The person set a question or form aside without answering (design
+  /// notes DD-R12). No turn: it leaves the screen at once, even mid-turn,
+  /// and the model hears about it with the next turn.
+  void dismiss(ShownComponent source) {
+    if (source.answered) return;
+    state = state.copyWith(
+      timeline: [
+        for (final e in state.timeline)
+          if (e is ComponentEntry && e.shown.id == source.id)
+            ComponentEntry(source.copyWith(answered: true, dismissed: true))
+          else
+            e,
+      ],
+    );
+    _changed.add('the person set aside c${source.id} ${source.request.component.id}');
+  }
+
   void _markAnswered(ShownComponent? source) {
     if (source == null) return;
     state = state.copyWith(

@@ -135,6 +135,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                                     .choose(id, label, supplement: extra, source: shown),
                               );
                             },
+                            onDismiss: () => ref.read(chatServiceProvider.notifier).dismiss(shown),
                           ),
                         ),
                       },

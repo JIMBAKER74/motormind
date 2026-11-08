@@ -1,6 +1,8 @@
 import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 
+import '../chat_strings.dart';
+
 /// The frame every presented card shares, and the one owner of the
 /// `card-<id>` widget key convention: an optional title, the body, and for
 /// finance cards the assumptions the calculation leaned on (collapsed) plus
@@ -13,6 +15,7 @@ class CardShell extends StatelessWidget {
     this.title,
     this.padding = const EdgeInsets.all(14),
     this.assumptions,
+    this.onDismiss,
   });
 
   /// The registry component id; becomes the widget key tests look for.
@@ -27,6 +30,10 @@ class CardShell extends StatelessWidget {
   /// estimates-only line appear. Prompts and listings pass nothing.
   final List<Map<String, Object?>>? assumptions;
 
+  /// Non-null puts a small "Not now" control beside the title, for prompts
+  /// the person may set aside (design notes DD-R12).
+  final VoidCallback? onDismiss;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -39,7 +46,20 @@ class CardShell extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (title case final title?) ...[
-              Text(title, style: theme.textTheme.titleMedium),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
+                  if (onDismiss case final dismiss?)
+                    IconButton(
+                      key: Key('dismiss-$id'),
+                      tooltip: ChatStrings.notNow,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: dismiss,
+                    ),
+                ],
+              ),
               const SizedBox(height: 8),
             ],
             ...children,
