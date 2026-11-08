@@ -46,6 +46,19 @@ class PageChallengeException implements Exception {
   String toString() => 'PageChallengeException: $message';
 }
 
+/// Thrown when the page never arrived: no network, or the site is down. The
+/// pane holds the WebView's own error page, which must not be read as a page
+/// with no listings on it.
+class PageUnreachableException implements Exception {
+  const PageUnreachableException(this.url);
+
+  /// The address that did not load.
+  final String url;
+
+  @override
+  String toString() => 'PageUnreachableException: $url';
+}
+
 /// What `read_page` gets back from the page's JavaScript: the address, the
 /// title, the share image, the visible text and the rendered HTML.
 typedef _PageSnapshot = ({String url, String title, String? image, String text, String html});
@@ -93,6 +106,9 @@ final class BrowserService extends Notifier<BrowserState> {
   WebViewController? _controller;
   Completer<void>? _loaded;
 
+  /// True when the page in the pane failed to load; cleared by the next load.
+  bool _loadFailed = false;
+
   @override
   BrowserState build() => const BrowserState();
 
@@ -105,6 +121,7 @@ final class BrowserService extends Notifier<BrowserState> {
   }
 
   void onLoadStart(String? url) {
+    _loadFailed = false;
     _loaded ??= Completer<void>();
     state = state.copyWith(url: url, loading: true);
   }
@@ -121,6 +138,10 @@ final class BrowserService extends Notifier<BrowserState> {
     if (pending != null && !pending.isCompleted) pending.complete();
     _loaded = null;
   }
+
+  /// The page itself failed to load. Android reports this before the
+  /// finished load of its error page, so a read waiting on that load sees it.
+  void onLoadFailed() => _loadFailed = true;
 
   /// True for a web address the pane may load: an absolute http(s) URL.
   /// Everything else (javascript:, file:, data:, a bare word) is refused
@@ -163,9 +184,11 @@ final class BrowserService extends Notifier<BrowserState> {
   /// at the owner's request (2026-10-12): it interrupted the person to fetch
   /// what their own browsing was already producing.
   Future<PageExtract> readPage({String? url, Duration timeout = loadTimeout}) async {
-    final appOpened = url != null && url != state.url;
+    // A page that failed is tried again: the network may be back.
+    final appOpened = url != null && (url != state.url || _loadFailed);
     if (appOpened) await open(url);
     await _awaitLoad(timeout);
+    if (_loadFailed) throw PageUnreachableException(state.url ?? url ?? '');
     final c = _controller;
     if (c == null) throw StateError('The web pane is not open.');
 

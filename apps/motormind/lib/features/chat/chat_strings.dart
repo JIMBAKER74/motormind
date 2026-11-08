@@ -129,6 +129,19 @@ abstract final class ChatStrings {
   static String searchNote(String query, String site, int matched) =>
       'Looking for $query on $site: $matched matched.';
 
+  /// The same note when the site could not be read and the cars are the
+  /// ones already remembered.
+  static String memoryNote(String query, int matched) =>
+      'Looking for $query among the cars I remembered: $matched matched.';
+
+  /// Why the cards are not fresh, on the filters card.
+  static String siteUnreachable(String site) =>
+      '$site is not answering. These are the cars I remembered; prices may have changed.';
+
+  /// The site could not be read and nothing is remembered.
+  static String siteUnreachableNothingKept(String site) =>
+      '$site is not answering, and I have no cars remembered yet. Try again when you are online.';
+
   /// The person's question when they tap Monthly cost? on a listing. The
   /// listed price is in their own sentence on purpose: a price read from a
   /// page never authorizes a calculation (the input guard), but the person
