@@ -167,6 +167,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                 const SizedBox(width: 8),
                 IconButton.filled(
                   key: const Key('chat-send'),
+                  // Names the button for screen readers (and for the UI
+                  // dump the device tests read).
+                  tooltip: 'Send',
                   onPressed: _send,
                   icon: const Icon(Icons.send),
                 ),

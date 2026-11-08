@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../listings/compare_card.dart';
 import '../listings/listing_cards.dart';
 import '../search/search_filters_card.dart';
 import 'cards/interaction_cards.dart';
@@ -28,6 +29,7 @@ class ResultCard extends StatelessWidget {
       'payment_breakdown' => PaymentBreakdownCard(shown: shown),
       'trade_equity_card' => TradeEquityCard(shown: shown),
       'vehicle_card' => ListingCards(shown: shown),
+      'vehicle_compare' => CompareCard(shown: shown),
       'page_extract' => PageExtractCard(shown: shown),
       _ => OutputsCard(shown: shown),
     };

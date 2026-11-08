@@ -4,13 +4,16 @@ import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:motormind/features/advisor/advisor_surface.dart';
 import 'package:motormind/features/advisor/display_agent.dart';
 import 'package:motormind/features/advisor/stage.dart';
+import 'package:motormind/features/advisor/tap_journal.dart';
 import 'package:motormind/features/browser/browser_service.dart';
 import 'package:motormind/features/chat/chat_panel.dart';
 import 'package:motormind/features/chat/chat_service.dart';
 import 'package:motormind/features/chat/chat_strings.dart';
 import 'package:motormind/features/chat/starters.dart';
+import 'package:motormind/features/chat/turn_stats.dart';
 import 'package:motormind/features/listings/listing_signals.dart';
 import 'package:motormind/features/search/search_service.dart';
 import 'package:vehicle_finance/vehicle_finance.dart';
@@ -23,6 +26,10 @@ import 'harness.dart';
 class ScriptedDriver implements ChatDriver {
   final List<String> systemInstructions = [];
   final List<String> prompts = [];
+
+  /// How many "long story" turns fail with the engine's full-window error
+  /// before one succeeds.
+  int overflowsLeft = 0;
 
   /// Completes each time a turn's stream closes, so tests can wait for the
   /// turn instead of sleeping.
@@ -49,13 +56,39 @@ class ScriptedDriver implements ChatDriver {
       ..listen(null, onDone: _finish, onError: (_) => _finish());
   }
 
+  /// Called once per turn; a stream that errors calls both onError and
+  /// onDone, so the second call is a no-op.
   void _finish() {
+    if (_idle.isCompleted) return;
     _idle.complete();
     _started = Completer<void>();
   }
 
   Stream<DriverChunk> _reply(String userText, ToolCallHandler onToolCall) async* {
-    if (userText.contains('just looking') || userText.contains('sports car')) {
+    final opened = RegExp(r'opened two listings from (\S+): (L\d+) .*; (L\d+) ')
+        .firstMatch(userText);
+    if (userText.endsWith("I'm buying now and want to work through the numbers.")) {
+      // What Gemma 4 E2B did on the emulator: record the mode, say nothing.
+      await onToolCall('update_profile', {'shopping_mode': 'buying'});
+    } else if (opened != null) {
+      // What a model that takes the cue does: show the two side by side.
+      await onToolCall('present', {
+        'component': 'vehicle_compare',
+        'result_id': opened.group(1),
+        // Top level, as the tool declares it and as Gemma sends it.
+        'ids': [opened.group(2), opened.group(3)],
+      });
+      yield const DriverText('Here they are side by side.');
+    } else if (userText.contains('long story')) {
+      if (overflowsLeft > 0) {
+        overflowsLeft--;
+        throw Exception(
+          'Stream error: INVALID_ARGUMENT: Input token ids are too long. '
+          'Exceeding the maximum number of tokens allowed: 2755 >= 2048',
+        );
+      }
+      yield const DriverText('Here is the short version.');
+    } else if (userText.contains('just looking') || userText.contains('sports car')) {
       yield const DriverText('Take a look around; tap a filter or tell me more.');
     } else if (userText.contains('450')) {
       final r = await onToolCall('estimate_payment', {
@@ -308,6 +341,74 @@ void main() {
   });
 
   group('prompts and the escape', () {
+    testWidgets('a mode chosen and answered with silence gets a sentence for that mode', (
+      tester,
+    ) async {
+      final s = await _start(tester);
+      await _chooseMode(tester, s, 'buying');
+      final replies = s.container
+          .read(chatServiceProvider)
+          .messages
+          .where((m) => m.role == MessageRole.motormind);
+      expect(replies.last.text, ChatStrings.afterMode(ShoppingMode.buying));
+    });
+
+    testWidgets('the model is told what is on screen, and only when it changed', (tester) async {
+      final s = await _start(tester, fullscreen: false);
+      // Turns whose replies are text only, so nothing on screen changes.
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('just looking around'),
+      );
+      final first = s.driver.prompts.last;
+      expect(
+        first,
+        contains(
+          '[Screen: the person is not yet saying how they shop; stage cards: listings search-',
+        ),
+      );
+      expect(first, contains('L1-L2, 2 cars, focused'));
+      expect(first, contains('choice "How are you shopping today?"'));
+      expect(first, contains('keyboard down.]'));
+      // Never a price in the screen line.
+      expect(RegExp(r'\[Screen:[^\]]*\$').hasMatch(first), isFalse);
+      // The same screen next turn: no line at all.
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('just looking still'),
+      );
+      expect(s.driver.prompts.last, isNot(contains('[Screen:')));
+    });
+
+    testWidgets('a full window reopens the session and sends again, once', (tester) async {
+      final s = await _start(tester);
+      final opened = s.driver.systemInstructions.length;
+      s.driver.overflowsLeft = 1;
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('a long story about my budget'),
+      );
+      final chat = s.container.read(chatServiceProvider);
+      expect(chat.error, isNull);
+      expect(s.driver.systemInstructions.length, opened + 1); // one new session
+      expect(chat.messages.where((m) => m.text == 'a long story about my budget'), hasLength(1));
+      expect(chat.messages.last.text, 'Here is the short version.');
+    });
+
+    testWidgets('a window that is still full after reopening says so', (tester) async {
+      final s = await _start(tester);
+      s.driver.overflowsLeft = 2;
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('a long story again'),
+      );
+      expect(s.container.read(chatServiceProvider).error, ChatStrings.contextFull);
+    });
+
     testWidgets('a choice prompt renders options and tapping one sends it', (tester) async {
       final s = await _start(tester);
       await _turn(tester, s, () => s.container.read(chatServiceProvider.notifier).send('hi'));
@@ -325,7 +426,8 @@ void main() {
       final s = await _start(tester);
       await _chooseMode(tester, s, 'practical');
       expect(s.container.read(chatServiceProvider.notifier).profile.mode, ShoppingMode.practical);
-      expect(s.driver.prompts.single, startsWith('I want practical options'));
+      // The person's words come last, after the app's context lines.
+      expect(s.driver.prompts.single, endsWith('I want practical options that fit my budget.'));
       expect(find.byKey(const Key('card-search_filters')), findsOneWidget);
     });
 
@@ -428,6 +530,89 @@ void main() {
   });
 
   group('cards stage', () {
+    testWidgets('Monthly cost? asks with the listed price in the person\'s own words', (
+      tester,
+    ) async {
+      final s = await _start(tester, fullscreen: false);
+      await tester.tap(find.text('2021 Honda CR-V EX'));
+      await tester.pumpAndSettle();
+      await _turn(
+        tester,
+        s,
+        () => tester.tap(find.byKey(const Key('ask-cost-2021 Honda CR-V EX|27995'))),
+      );
+      // The price is the person's to ask about, so the calculation it leads
+      // to is allowed; a price only read off the page would not be.
+      expect(
+        s.driver.prompts.last,
+        endsWith('What would the 2021 Honda CR-V EX, listed at \$27,995, cost me a month?'),
+      );
+      expect(s.container.read(turnStatsProvider).first.trigger, TurnTrigger.tileCost);
+      // The app wrote that sentence; it does not become a search for Hondas
+      // under \$27,995.
+      expect(s.container.read(searchProvider).query.isEmpty, isTrue);
+    });
+
+    testWidgets('dead taps on the stage make Motormind ask; a bigger view follows', (tester) async {
+      final s = await _start(tester, fullscreen: false);
+      final header = find.textContaining('Listings ·');
+      expect(header, findsOneWidget);
+      // The card's header does nothing when tapped: three taps, no change.
+      for (var i = 0; i < TapJournal.threshold; i++) {
+        await tester.tap(header);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+      final asked = s.container
+          .read(chatServiceProvider)
+          .timeline
+          .whereType<ComponentEntry>()
+          .where((e) => e.shown.request.props['question'] == ChatStrings.deadTapQuestion);
+      expect(asked, hasLength(1));
+      await s.container
+          .read(chatServiceProvider.notifier)
+          .choose(
+            '${ChatService.lookPrefix}bigger',
+            ChatStrings.lookBigger,
+            source: asked.single.shown,
+          );
+      await tester.pumpAndSettle();
+      // On the cards, a bigger view is the cards with the panel out of the way.
+      expect(s.container.read(surfaceProvider), SurfaceState.collapsed);
+      // The model hears which card it was, with the next turn.
+      await _turn(tester, s, () => s.container.read(chatServiceProvider.notifier).send('hm'));
+      expect(s.driver.prompts.last, contains('tapped the listings card'));
+    });
+
+    testWidgets('opening a second listing lets the model choose a side-by-side', (tester) async {
+      final s = await _start(tester, fullscreen: false);
+      await _chooseMode(tester, s, 'browsing');
+      final before = s.driver.prompts.length;
+      await tester.tap(find.text('2021 Honda CR-V EX'));
+      await tester.pumpAndSettle();
+      expect(s.driver.prompts, hasLength(before)); // one listing: nothing asked
+      await _turn(tester, s, () => tester.tap(find.text('2023 BMW X3')));
+      // The model was told which two, by id and name, never their prices.
+      final cue = s.driver.prompts.last;
+      expect(cue, contains('opened two listings'));
+      expect(cue, isNot(contains('27995')));
+      expect(cue, isNot(contains('41000')));
+      // No bubble for the person, who said nothing.
+      expect(
+        s.container.read(chatServiceProvider).messages.where((m) => m.text.contains('[The person')),
+        isEmpty,
+      );
+      // The model chose the compare; it is on the stage, focused.
+      final stage = s.container.read(stageProvider);
+      expect(stage.focused!.request.component.id, 'vehicle_compare');
+      expect(find.byKey(const Key('compare-L1')), findsOneWidget);
+      expect(find.byKey(const Key('compare-L2')), findsOneWidget);
+      // Beside the listings, not in place of them.
+      expect(stage.cards.map((c) => c.request.component.id), contains('vehicle_card'));
+      // Its stats say what started it.
+      expect(s.container.read(turnStatsProvider).first.trigger, TurnTrigger.signal);
+    });
+
     testWidgets('three quick taps on one tile make Motormind ask, and a bigger photo follows', (
       tester,
     ) async {

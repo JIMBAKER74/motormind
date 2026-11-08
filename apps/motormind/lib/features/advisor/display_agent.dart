@@ -154,6 +154,7 @@ class ScreenState {
     required this.userExpandedFilters,
     required this.lastUserText,
     required this.busy,
+    this.conversationReady = true,
   });
 
   /// Characters of the person's last message the agent sees.
@@ -174,6 +175,11 @@ class ScreenState {
 
   /// True while a conversation turn is running; the model agent waits.
   final bool busy;
+
+  /// False while the conversation has not started (the model is loading or
+  /// must be downloaded); the panel then holds its size, so the button in
+  /// it does not move under a finger when listings arrive.
+  final bool conversationReady;
 
   /// One line for the model.
   String describe() {
@@ -212,6 +218,11 @@ final class RulesDisplayAgent implements DisplayAgent {
     final StageSplit split;
     if (s.keyboardOpen) {
       split = StageSplit.typing;
+    } else if (!s.conversationReady) {
+      // A download button or a load line is in the panel: it holds still
+      // when the listings arrive (fresh install on the emulator, 2026-10-18:
+      // the button moved 200 px under the tap).
+      split = StageSplit.half;
     } else if (s.listingCount > 0 && stage == StageMode.cards) {
       split = StageSplit.twoThirds;
     } else {
@@ -346,10 +357,26 @@ final displayProvider = NotifierProvider<DisplayController, DisplayDecision>(Dis
 final class DisplayController extends Notifier<DisplayDecision> {
   /// A screen change settles for this long before the model is asked, so a
   /// run of taps costs one decision.
-  static const decideDebounce = Duration(milliseconds: 800);
+  static const decideDebounce = Duration(seconds: 2);
+
+  /// The shortest time between two decisions. Every decision replays the
+  /// conversation into a second session on this engine; on a Galaxy Z
+  /// Fold 4 ten decisions in 90 s pushed the prefill from 4 s to 30 s and
+  /// stalled the conversation behind them (2026-10-12).
+  static const minDecisionGap = Duration(seconds: 10);
 
   Timer? _debounce;
   int _generation = 0;
+
+  /// The screen state the model was last asked about; the same state is
+  /// never asked about twice (most rebuilds change nothing it sees).
+  String? _lastAsked;
+
+  /// True while a decision is running; a change meanwhile waits for it and
+  /// is asked about once, never queued.
+  bool _inFlight = false;
+  DateTime? _lastDecidedAt;
+  ({ScreenState screen, DisplayDecision rules})? _waiting;
 
   @override
   DisplayDecision build() {
@@ -387,30 +414,52 @@ final class DisplayController extends Notifier<DisplayDecision> {
       userExpandedFilters: search.userExpanded,
       lastUserText: chat.lastUserText,
       busy: chat.busy,
+      conversationReady: chat.ready,
     );
   }
 
-  /// Asks the model after [decideDebounce]; a newer screen change cancels a
-  /// stale answer. The timer fires after build, so build stays pure.
+  /// Asks the model about [s] after [decideDebounce], unless it was asked
+  /// about this very state already. While a decision runs, the newest change
+  /// waits and is asked about once afterwards, no sooner than
+  /// [minDecisionGap] after the last one. The timer fires after build, so
+  /// build stays pure.
   void _askModel(ScreenState s, DisplayDecision defaults) {
+    final key = s.describe();
+    if (key == _lastAsked) return;
+    if (_inFlight) {
+      _waiting = (screen: s, rules: defaults);
+      return;
+    }
     final model = ref.read(advisorModelServiceProvider.notifier).loadedModel;
     if (model == null) return;
     final gen = ++_generation;
     _debounce?.cancel();
-    _debounce = Timer(decideDebounce, () async {
+    final since = _lastDecidedAt == null
+        ? minDecisionGap
+        : DateTime.now().difference(_lastDecidedAt!);
+    final wait = since >= minDecisionGap ? decideDebounce : minDecisionGap - since;
+    _debounce = Timer(wait, () async {
+      if (gen != _generation || ref.read(chatServiceProvider).busy) return;
       final prompt = await ref.read(displayPromptProvider.future);
       if (gen != _generation) return;
+      _lastAsked = key;
+      _inFlight = true;
       state = state.copyWith(thinking: true);
       try {
         final d = await ModelDisplayAgent(model, prompt).decide(s, defaults);
-        if (gen != _generation) return; // the screen moved on
         logDev('display model=${d.toJson()} rules=${defaults.toJson()} took=${d.tookMs}ms');
-        state = d;
+        if (gen == _generation) state = d;
       } on Exception catch (e) {
         logDev('display model failed: $e');
         if (gen == _generation) {
           state = state.copyWith(by: DecidedBy.modelFailed, thinking: false, clearCue: true);
         }
+      } finally {
+        _inFlight = false;
+        _lastDecidedAt = DateTime.now();
+        final next = _waiting;
+        _waiting = null;
+        if (next != null && ref.mounted) _askModel(next.screen, next.rules);
       }
     });
   }

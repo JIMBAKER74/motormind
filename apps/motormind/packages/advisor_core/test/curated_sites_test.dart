@@ -51,6 +51,17 @@ void main() {
       }
     });
 
+    test('EchoPark pages with page=N; a site without a known parameter does not', () {
+      const q = SearchQuery(bodyStyle: 'suv');
+      expect(CuratedSites.echopark.urlFor(q, page: 2), endsWith('&page=2'));
+      expect(
+        CuratedSites.echopark.urlFor(const SearchQuery(), page: 3),
+        endsWith('used-cars?page=3'),
+      );
+      expect(CuratedSites.echopark.urlFor(q), isNot(contains('page=')));
+      expect(CuratedSites.autotrader.urlFor(q, page: 2), isNot(contains('page=2')));
+    });
+
     test('keywords are encoded', () {
       expect(CuratedSites.echopark.search(keywords: 'a&b c'), endsWith('search=a%26b+c'));
     });

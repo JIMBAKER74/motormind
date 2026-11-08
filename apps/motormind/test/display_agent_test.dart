@@ -20,6 +20,7 @@ ScreenState _screen({
   StageMode stageMode = StageMode.web,
   bool userStageMode = false,
   bool? userExpandedFilters,
+  bool conversationReady = true,
 }) => ScreenState(
   surface: surface,
   keyboardOpen: keyboardOpen,
@@ -32,10 +33,21 @@ ScreenState _screen({
   userExpandedFilters: userExpandedFilters,
   lastUserText: '',
   busy: false,
+  conversationReady: conversationReady,
 );
 
 void main() {
   group('rules', () {
+    test('the panel holds its size while the conversation has not started', () {
+      // A download button in the panel must not move when listings arrive.
+      final waiting = RulesDisplayAgent.apply(
+        _screen(cardCount: 1, listingCount: 22, conversationReady: false),
+      );
+      expect(waiting.split, StageSplit.half);
+      final ready = RulesDisplayAgent.apply(_screen(cardCount: 1, listingCount: 22));
+      expect(ready.split, StageSplit.twoThirds);
+    });
+
     test('the filters card collapses once something is set, unless fullscreen', () {
       expect(RulesDisplayAgent.apply(_screen()).filters, FiltersCardMode.expanded);
       expect(RulesDisplayAgent.apply(_screen(filtersSet: true)).filters, FiltersCardMode.summary);

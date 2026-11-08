@@ -3,6 +3,7 @@ import 'package:html/parser.dart' show parse;
 import 'package:vehicle_finance/vehicle_finance.dart' show enumByName;
 
 import '../sentinel.dart';
+import 'data_rule.dart';
 import 'listing.dart';
 import 'listing_parse.dart';
 
@@ -33,6 +34,7 @@ class ReadingRecipe {
     this.selfCheck = const SelfCheckRules(),
     this.status = RecipeStatus.verified,
     this.note,
+    this.data,
   });
 
   /// Matches `CuratedSite.id`.
@@ -56,6 +58,10 @@ class ReadingRecipe {
 
   /// Free text about the recipe's origin or its last repair.
   final String? note;
+
+  /// Where the page keeps its inventory as data; read before the visible
+  /// cards when present (see [DataRule]). Null for sites read from markup.
+  final DataRule? data;
 
   /// Restores a recipe from its JSON asset form; missing optional fields
   /// take their defaults. Throws a [FormatException] naming the field when
@@ -86,6 +92,7 @@ class ReadingRecipe {
           : SelfCheckRules.fromJson(_asMap(json['selfCheck'], 'recipe.selfCheck')),
       status: status,
       note: _optional<String>(json, 'note', 'recipe'),
+      data: json['data'] == null ? null : DataRule.fromJson(_asMap(json['data'], 'recipe.data')),
     );
   }
 
@@ -100,6 +107,7 @@ class ReadingRecipe {
     'selfCheck': selfCheck.toJson(),
     'status': status.name,
     if (note != null) 'note': note,
+    if (data != null) 'data': data!.toJson(),
   };
 
   /// Returns a copy with [status] replaced. [note] replaces the note when
@@ -113,6 +121,7 @@ class ReadingRecipe {
     selfCheck: selfCheck,
     status: status,
     note: orKeep(note, this.note),
+    data: data,
   );
 }
 
@@ -351,6 +360,7 @@ class SelfCheck {
     required this.withImage,
     this.pageTotal,
     this.problems = const [],
+    this.fromData = false,
   });
 
   /// True when the read passed every rule and found at least one listing.
@@ -371,6 +381,11 @@ class SelfCheck {
   /// Each failed rule in words; empty when [ok].
   final List<String> problems;
 
+  /// True when the listings came from the page's own data block (see
+  /// `DataRule`), false when from the visible cards. A site change shows
+  /// first as a quiet switch from one to the other.
+  final bool fromData;
+
   /// Restores a check from its [toJson] form (captures keep the verdict).
   factory SelfCheck.fromJson(Map<String, Object?> json) => SelfCheck(
     ok: json['ok'] == true,
@@ -379,6 +394,7 @@ class SelfCheck {
     withImage: (json['withImage'] as num?)?.toInt() ?? 0,
     pageTotal: (json['pageTotal'] as num?)?.toInt(),
     problems: ((json['problems'] as List?) ?? const []).cast<String>(),
+    fromData: json['fromData'] == true,
   );
 
   /// Serializes the verdict so a capture can keep it; unset optionals are
@@ -390,11 +406,13 @@ class SelfCheck {
     'withImage': withImage,
     if (pageTotal != null) 'pageTotal': pageTotal,
     'problems': problems,
+    if (fromData) 'fromData': true,
   };
 
   @override
   String toString() => ok
-      ? '$cardsFound cards, $withPrice priced, $withImage with image'
+      ? '$cardsFound cards, $withPrice priced, $withImage with image, '
+            'from ${fromData ? 'page data' : 'visible cards'}'
       : 'failed: ${problems.join('; ')}';
 }
 
@@ -444,6 +462,32 @@ class RecipeReader {
     required DateTime now,
   }) {
     final Document doc = parse(html);
+    // The page's own data first: every car with its photos, no scrolling.
+    // Too few cars there (a changed site, a different page) falls through
+    // to the visible cards, and the self-check judges whichever was used.
+    final fromData = recipe.data?.read(doc, sourceUrl: sourceUrl, now: now, max: maxListings);
+    if (fromData != null && fromData.listings.length >= recipe.selfCheck.minCards) {
+      final l = fromData.listings;
+      final counts = (
+        listings: l,
+        cards: l.length,
+        untitled: 0,
+        duplicates: 0,
+        withPrice: l.where((x) => x.price != null).length,
+        withImage: l.where((x) => x.imageUrl != null).length,
+      );
+      return RecipeResult(
+        listings: l,
+        recipe: recipe,
+        check: _check(
+          counts,
+          recipe,
+          doc.body?.text ?? '',
+          dataTotal: fromData.total,
+          fromData: true,
+        ),
+      );
+    }
     final counts = _readCards(doc, recipe, sourceUrl: sourceUrl, now: now);
     return RecipeResult(
       listings: counts.listings,
@@ -511,12 +555,18 @@ class RecipeReader {
     );
   }
 
-  SelfCheck _check(_CardCounts counts, ReadingRecipe recipe, String pageText) {
+  SelfCheck _check(
+    _CardCounts counts,
+    ReadingRecipe recipe,
+    String pageText, {
+    int? dataTotal,
+    bool fromData = false,
+  }) {
     final rules = recipe.selfCheck;
     final read = counts.listings.length;
     final problems = <String>[];
-    int? pageTotal;
-    if (rules.totalPattern != null) {
+    int? pageTotal = dataTotal;
+    if (pageTotal == null && rules.totalPattern != null) {
       final t = RegExp(
         checkRecipePattern(rules.totalPattern!, 'totalPattern'),
         caseSensitive: false,
@@ -548,6 +598,7 @@ class RecipeReader {
       problems.add('read $read cards but the page says $pageTotal results');
     }
     return SelfCheck(
+      fromData: fromData,
       ok: problems.isEmpty && read > 0,
       cardsFound: read,
       withPrice: counts.withPrice,

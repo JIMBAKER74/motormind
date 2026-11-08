@@ -26,6 +26,7 @@ class AdvisorModelSpec {
     this.temperature = 0.8,
     this.topK = 40,
     this.topP = 0.95,
+    this.loadsOnThisEngine = true,
   });
 
   final String id;
@@ -59,6 +60,13 @@ class AdvisorModelSpec {
   final int topK;
   final double topP;
 
+  /// False for a model the pinned engine cannot load today. Such a model
+  /// stays on the Models screen for testing, but the app never recommends
+  /// it or loads it on its own: a fresh install on a low-memory phone was
+  /// offered one (emulator, 2026-10-18), and the download would have ended
+  /// in a model that fails to load.
+  final bool loadsOnThisEngine;
+
   String get sizeLabel => '${(sizeBytes / 1e9).toStringAsFixed(sizeBytes >= 1e9 ? 1 : 2)} GB';
 }
 
@@ -87,7 +95,9 @@ abstract final class ModelCatalog {
   static const qwen3Small = AdvisorModelSpec(
     id: 'qwen3-0.6b',
     displayName: 'Qwen3 0.6B',
-    description: 'Light and fast. About 0.6 GB; runs on most phones. Weaker on messy sentences.',
+    description:
+        'Experimental: the current engine cannot load this file yet. About 0.6 GB. '
+        'Kept here for testing a lighter model.',
     url: 'https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B.litertlm',
     filename: 'Qwen3-0.6B.litertlm',
     sizeBytes: 610_000_000,
@@ -95,6 +105,7 @@ abstract final class ModelCatalog {
     modelType: ModelType.qwen3,
     preferredBackend: PreferredBackend.cpu,
     temperature: 0.7,
+    loadsOnThisEngine: false,
   );
 
   static const List<AdvisorModelSpec> all = [gemma4E2B, qwen3Small];
@@ -109,8 +120,13 @@ abstract final class ModelCatalog {
   /// when none does, and [defaultModel] when the memory is unknown. People
   /// should not have to know what a model is to start; the app picks and
   /// the Models screen stays for anyone who wants to choose.
+  ///
+  /// Only models that load on this engine are candidates; with one such
+  /// model today, every phone is offered Gemma 4 E2B, and the context window
+  /// adapts to its memory instead.
   static AdvisorModelSpec forFreeMemory(double? freeGb) {
-    if (freeGb == null) return defaultModel;
-    return all.where((m) => m.minFreeRamMb / 1024 <= freeGb).firstOrNull ?? all.last;
+    final candidates = all.where((m) => m.loadsOnThisEngine).toList();
+    if (freeGb == null || candidates.isEmpty) return defaultModel;
+    return candidates.where((m) => m.minFreeRamMb / 1024 <= freeGb).firstOrNull ?? candidates.last;
   }
 }

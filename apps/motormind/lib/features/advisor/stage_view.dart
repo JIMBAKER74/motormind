@@ -277,6 +277,7 @@ String cardSummary(ShownComponent s) {
     'trade_equity_card' => 'Trade ${money(o['equity'], cents: false)}',
     'affordability_gauge' => 'Affordability',
     'vehicle_card' => 'Listings',
+    'vehicle_compare' => 'Compare',
     'page_extract' => 'Page',
     _ => labelFor(s.request.component.id),
   };

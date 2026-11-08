@@ -115,3 +115,17 @@ final class RecipeStore extends AsyncNotifier<Map<String, ReadingRecipe>> {
     return true;
   }
 }
+
+/// The last read of each site: which recipe version, its self-check, and
+/// when. Shown in Test tools so a read can be judged without a log.
+typedef LastRead = ({int version, SelfCheck check, DateTime at});
+
+final lastReadsProvider = NotifierProvider<LastReads, Map<String, LastRead>>(LastReads.new);
+
+final class LastReads extends Notifier<Map<String, LastRead>> {
+  @override
+  Map<String, LastRead> build() => const {};
+
+  void record(String siteId, int version, SelfCheck check) =>
+      state = {...state, siteId: (version: version, check: check, at: DateTime.now())};
+}

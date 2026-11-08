@@ -1,3 +1,5 @@
+import 'package:advisor_core/advisor_core.dart';
+
 /// Every sentence the chat shows the person, in one place, so wording is a
 /// reviewable diff rather than a scavenger hunt (the same rule disclosures
 /// follow in `advisor_core`).
@@ -22,6 +24,20 @@ abstract final class ChatStrings {
   static const somethingWrong = 'Something went wrong.';
   static const numbersReplaced =
       'Motormind\'s wording was replaced because it contained numbers not from a calculation.';
+
+  /// What Motormind says after a shopping mode is chosen, when the model
+  /// recorded the mode and said nothing (Gemma 4 E2B often ends a turn
+  /// right after a tool call). Each points at what the screen now offers.
+  static String afterMode(ShoppingMode mode) => switch (mode) {
+    ShoppingMode.browsing =>
+      'Take a look around. Tap a type or a price, or tell me what catches your eye.',
+    ShoppingMode.dreaming => 'Let\'s dream a little. Pick a kind below, or name the car.',
+    ShoppingMode.practical =>
+      'Let\'s find something that fits. Fill in what you know below, or just tell me.',
+    ShoppingMode.buying =>
+      'Let\'s work through the numbers. Fill in what you know below, or just tell me.',
+  };
+
   static const nothingToAdd =
       'Nothing to add yet. Pick an option above, change a filter, or tell me more.';
   static const hereIsWhatIFound = 'Here is what I found. Tell me more when you are ready.';
@@ -36,6 +52,12 @@ abstract final class ChatStrings {
       'then ask me to read the page again.';
   static const captureFailed = 'The page could not be captured.';
   static const askMotormind = 'Ask Motormind';
+
+  /// Said when a long conversation filled the model's memory and Motormind
+  /// opened a fresh session to carry on (the default from QUESTIONS Q91).
+  static const freshPage = 'I started a fresh page to keep going; I still have what you told me.';
+  static const compareTitle = 'Side by side';
+  static const compareMissing = 'Those listings are no longer on the page that was read.';
   static const starting = 'Starting…';
 
   /// What Motormind says when the person keeps tapping one card: the taps
@@ -45,6 +67,11 @@ abstract final class ChatStrings {
   static const biggerPhoto = 'A bigger photo';
   static const openOnSite = 'Open it on the site';
   static const nothingThanks = 'Nothing, thanks';
+
+  /// Asked after taps repeated in one place changed nothing on screen.
+  static const deadTapQuestion = 'I see you tapping there. What are you looking for?';
+  static const lookBigger = 'A bigger view';
+  static const lookDetail = 'More detail';
 
   /// Shown in place of a part of the screen that hit a bug; the rest of the
   /// app keeps working and Motormind is told.
@@ -102,5 +129,19 @@ abstract final class ChatStrings {
   static String searchNote(String query, String site, int matched) =>
       'Looking for $query on $site: $matched matched.';
 
-  static String monthlyCostOf(String title) => 'What would the $title cost me a month?';
+  /// The person's question when they tap Monthly cost? on a listing. The
+  /// listed price is in their own sentence on purpose: a price read from a
+  /// page never authorizes a calculation (the input guard), but the person
+  /// chose this car, so the price is theirs to ask about. Without it the
+  /// model had no price it could use and searched instead (headless
+  /// emulator, 2026-11-02).
+  static String monthlyCostOf(String title, {double? price}) => price == null
+      ? 'What would the $title cost me a month?'
+      : 'What would the $title, listed at ${wholeDollars(price)}, cost me a month?';
+
+  /// The listings card's "more" control: how many of the site's total are
+  /// on the card.
+  static String moreFrom(String site, int shown, int total) => 'More from $site ($shown of $total)';
+
+  static String readingMoreFrom(String site) => 'Reading more from $site…';
 }

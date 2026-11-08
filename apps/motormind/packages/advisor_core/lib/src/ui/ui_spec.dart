@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:vehicle_finance/vehicle_finance.dart' show enumByName;
 
 /// Where Motormind's surface sits on screen.
@@ -49,7 +51,9 @@ class UiComponent {
 
   /// Returns problems with `props`, or an empty list. Must not change the
   /// props: anything the app trims rather than refuses is trimmed by
-  /// [PresentRequest.validate] on its own copy.
+  /// [PresentRequest.validate] on its own copy. A result component with a
+  /// validator takes props as well as its result (which listings to
+  /// compare); one without takes none.
   final List<String> Function(Map<String, Object?> props)? validateProps;
 
   /// True for components the app shows on its own (bound to app state). They
@@ -98,6 +102,30 @@ List<String> _validateOptions(Map<String, Object?> props, {required int max}) {
     // same reason extra options are dropped.
   }
   return errors;
+}
+
+/// Most listings a compare shows; a fourth column does not fit a phone.
+const int maxCompared = 3;
+
+/// Optional listing ids on a listings card: absent shows all.
+List<String> _validatePickedIds(Map<String, Object?> props) {
+  final ids = props['ids'];
+  if (ids == null) return const [];
+  if (ids is! List || ids.isEmpty || ids.any((i) => i is! String)) {
+    return ['ids must be a list of listing ids'];
+  }
+  return const [];
+}
+
+List<String> _validateCompareIds(Map<String, Object?> props) {
+  final ids = props['ids'];
+  if (ids is! List || ids.any((i) => i is! String)) {
+    return ['props.ids must be a list of listing ids'];
+  }
+  if (ids.length < 2 || ids.length > maxCompared) {
+    return ['props.ids must name 2 to $maxCompared listings'];
+  }
+  return const [];
 }
 
 /// Field types `input_form` can render.
@@ -184,19 +212,23 @@ abstract final class ComponentRegistry {
     defaultSurface: SurfaceState.fullscreen,
   );
 
-  /// One listing from `find_vehicles` or `read_page`.
-  static const vehicleCard = UiComponent(
+  /// Listings from `find_vehicles` or `read_page`; with `ids`, only those
+  /// (the model's own pick, as Gemma 4 E2B asked for on the emulator).
+  static final vehicleCard = UiComponent(
     id: 'vehicle_card',
-    description: 'One listing.',
-    acceptsTools: {'find_vehicles', 'read_page'},
+    description: 'Listings; ids: only these listings, from a listings result.',
+    acceptsTools: const {'find_vehicles', 'read_page'},
+    validateProps: _validatePickedIds,
   );
 
-  /// Two or three listings compared, from `find_vehicles`.
-  static const vehicleCompare = UiComponent(
+  /// Two or three listings side by side, from a listings result; `props.ids`
+  /// names them by listing id. The model chooses it, for instance when the
+  /// app says the person opened two listings in a row.
+  static final vehicleCompare = UiComponent(
     id: 'vehicle_compare',
-    description: '2–3 listings compared.',
-    acceptsTools: {'find_vehicles'},
-    defaultSurface: SurfaceState.fullscreen,
+    description: '2–3 listings side by side; ids: the listing ids, from a listings result.',
+    acceptsTools: const {'find_vehicles'},
+    validateProps: _validateCompareIds,
   );
 
   /// Facts read from a web page by `read_page`.
@@ -325,8 +357,9 @@ final class PresentRequest {
   /// Names, never values, so the guard is not involved.
   final List<String> highlights;
 
-  /// Model-supplied props for interaction components, already validated and
-  /// trimmed to what the component renders; empty for result components.
+  /// Model-supplied props, already validated and trimmed to what the
+  /// component renders: an interaction component's question and options, a
+  /// compare's listing ids; empty for components that take none.
   final Map<String, Object?> props;
 
   /// Validates the model's arguments against the registry and the tool that
@@ -349,9 +382,17 @@ final class PresentRequest {
     }
 
     final resultId = args['result_id']?.toString();
-    final props = component.isInteraction ? _propsOf(component, args['props']) : null;
-    if (props != null) {
-      errors.addAll(component.validateProps?.call(props) ?? const []);
+    final takesProps = component.isInteraction || component.validateProps != null;
+    // A small model often flattens the call and puts a prop beside the
+    // component instead of inside props ({"component": ..., "ids": [...]}).
+    final given = args['props'];
+    final rawProps = (given == null || (given is Map && given.isEmpty))
+        ? _strayProps(args) ?? given
+        : given;
+    final props = takesProps ? _propsOf(component, rawProps) : null;
+    if (props != null) errors.addAll(component.validateProps?.call(props) ?? const []);
+    if (component.isInteraction) {
+      // Built from props alone.
     } else if (resultId == null || resultId.isEmpty) {
       errors.add('result_id is required for ${component.id}');
     } else if (resultTool == null) {
@@ -370,7 +411,7 @@ final class PresentRequest {
       request: PresentRequest(
         component: component,
         surface: surface ?? component.defaultSurface,
-        resultId: props == null ? resultId : null,
+        resultId: component.isInteraction ? null : resultId,
         title: args['title']?.toString(),
         highlights: highlights,
         props: props ?? const {},
@@ -383,7 +424,18 @@ final class PresentRequest {
   /// the component shows trimmed to the first ones. The copy is what keeps
   /// the caller's map intact.
   static Map<String, Object?> _propsOf(UiComponent component, Object? raw) {
+    // A small model sometimes sends props as a JSON string; read it.
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } on FormatException {
+        raw = null;
+      }
+    }
     final props = raw is Map ? Map<String, Object?>.from(raw) : <String, Object?>{};
+    if (props.containsKey('ids')) {
+      props['ids'] = _listingIds(props['ids']);
+    }
     final max = switch (component.id) {
       'choice' => maxChoiceOptions,
       'multi_choice' => maxMultiChoiceOptions,
@@ -394,6 +446,41 @@ final class PresentRequest {
       props['options'] = options.take(max).toList();
     }
     return props;
+  }
+
+  /// The keys of a present call that are not its own fields, as props, or
+  /// null when there are none.
+  static Map<String, Object?>? _strayProps(Map<String, Object?> args) {
+    const own = {'component', 'result_id', 'surface', 'title', 'highlights', 'props'};
+    final stray = {
+      for (final e in args.entries)
+        if (!own.contains(e.key)) e.key: e.value,
+    };
+    return stray.isEmpty ? null : stray;
+  }
+
+  /// Listing ids in the shapes a small model writes them: a list of
+  /// strings, a single string ("L1, L2" or "[L1, L2]"), or numbers (2
+  /// meaning L2). Gemma 4 E2B took the compare cue and had the call
+  /// refused over this formatting (headless emulator, 2026-11-02); a
+  /// refused call leaves the person with nothing, so the shape is read
+  /// rather than refused. Anything else is left for validation to reject.
+  static Object? _listingIds(Object? raw) {
+    String norm(Object v) {
+      final t = v.toString().replaceAll(RegExp(r'''[\[\]"' ]'''), '');
+      return RegExp(r'^\d+$').hasMatch(t) ? 'L$t' : t;
+    }
+
+    if (raw is String) {
+      return [
+        for (final part in raw.split(RegExp(r'[,;\s]+')))
+          if (norm(part).isNotEmpty) norm(part),
+      ];
+    }
+    if (raw is List && raw.every((v) => v is String || v is num)) {
+      return [for (final v in raw) norm(v as Object)];
+    }
+    return raw;
   }
 
   /// The requested surface, or null when the model left it to the default.

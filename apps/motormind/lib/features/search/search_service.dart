@@ -8,6 +8,7 @@ import '../advisor/stage.dart';
 import '../browser/browser_service.dart';
 import '../chat/chat_state.dart';
 import '../chat/chat_strings.dart';
+import '../listings/listing_cache.dart';
 
 /// The live search: the filters as they stand, where they apply, and what the
 /// last read found. A filter applies the moment it changes; there is no
@@ -20,6 +21,7 @@ class SearchState {
     this.applying = false,
     this.lastCount,
     this.note,
+    this.page = 1,
   });
 
   final SearchQuery query;
@@ -42,6 +44,9 @@ class SearchState {
   /// Why the last read produced nothing, in a sentence for the person.
   final String? note;
 
+  /// Results pages read for this search, from 1; "more" reads the next.
+  final int page;
+
   /// The display name of [siteId].
   String get siteName => CuratedSites.nameFor(siteId);
 
@@ -54,6 +59,7 @@ class SearchState {
     int? lastCount,
     String? note,
     bool clearNote = false,
+    int? page,
   }) => SearchState(
     query: query ?? this.query,
     siteId: siteId ?? this.siteId,
@@ -61,6 +67,7 @@ class SearchState {
     applying: applying ?? this.applying,
     lastCount: lastCount ?? this.lastCount,
     note: clearNote ? null : (note ?? this.note),
+    page: page ?? this.page,
   );
 }
 
@@ -98,9 +105,32 @@ final class SearchService extends Notifier<SearchState> {
   /// Result ids for the stage; a counter, not a clock, so tests are stable.
   int _resultSeq = 0;
 
+  /// True while the stage shows the listings remembered from an earlier
+  /// launch and no fresh read has replaced them.
+  bool _showingRemembered = false;
+
+  /// Shows the listings remembered from the last launch, each tile with its
+  /// age, until the fresh read replaces them; nothing when there are none or
+  /// the fresh read finished first.
+  Future<void> _showRemembered() async {
+    final remembered = await ref.read(listingCacheProvider).load(state.siteId);
+    if (remembered.isEmpty || state.lastCount != null || !ref.mounted) return;
+    ref.read(listingStoreProvider).addAll(remembered);
+    _showingRemembered = true;
+    _showResults(
+      remembered.take(stageListingLimit).toList(),
+      remembered.first.sourceUrl,
+      state.query,
+    );
+    logDev('remembered: ${remembered.length} listings shown from the last launch');
+  }
+
   @override
   SearchState build() {
     ref.onDispose(() => _debounce?.cancel());
+    // Last launch's cards first, so the stage is never empty while the page
+    // loads; the fresh read below replaces them.
+    Future<void>.microtask(_showRemembered);
     // Cards first: the site's own first page of inventory is read once at
     // launch and shown as tiles, before anything is asked (design notes,
     // DD-Q21; the owner's Q71). It is the one page the pane would open
@@ -188,20 +218,48 @@ final class SearchService extends Notifier<SearchState> {
 
   /// Opens the site's results page for the query, reads it, and shows what
   /// matched. Safe to call repeatedly; a newer call wins.
-  Future<void> apply() async {
+  Future<void> apply() => _read(page: 1);
+
+  /// Reads the site's next results page for the same search and adds its
+  /// cars to the card: one page per tap, as the site's own "next" arrow
+  /// would. Only for sites whose page parameter is known.
+  Future<void> loadMore() async {
+    if (state.applying || site.pageParam == null) return;
+    await _read(page: state.page + 1);
+  }
+
+  /// Opens results page [page] for the query, reads it, remembers what it
+  /// found, and shows every match read so far. Safe to call repeatedly; a
+  /// newer call wins.
+  Future<void> _read({required int page}) async {
     final gen = ++_generation;
     final q = state.query;
-    final url = site.urlFor(q);
+    final url = site.urlFor(q, page: page);
+    // The stage keeps the cards while the page is read; it shows the page
+    // as a labeled strip above them (the stage view decides from
+    // `applying`). Flipping to the full page here took the screen from the
+    // cards on every search (owner, 2026-10-22).
     state = state.copyWith(applying: true, clearNote: true);
-    ref.read(stageProvider.notifier).showWeb();
     try {
       final extract = await ref.read(pageReaderProvider)(url: url);
       if (gen != _generation) return; // superseded
-      final store = ref.read(listingStoreProvider)..addAll(extract.listings);
+      final cache = ref.read(listingCacheProvider);
+      final siteId = state.siteId;
+      // A photo seen on an earlier launch is kept when this read has none.
+      final fresh = ListingCache.withRememberedPhotos(extract.listings, await cache.load(siteId));
+      if (gen != _generation) return;
+      final store = ref.read(listingStoreProvider)
+        ..addAll(fresh)
+        ..mergeImages(fresh);
+      unawaited(cache.save(siteId, fresh));
       // Every listing that matched goes on the stage (the card scrolls); the
       // model's own tool keeps its small limit for the context's sake.
-      final results = store.searchQuery(q, limit: stageListingLimit);
-      state = state.copyWith(applying: false, lastCount: results.length);
+      final results = store.searchQuery(q, limit: stageListingLimit * page);
+      state = state.copyWith(applying: false, lastCount: results.length, page: page);
+      // A failed or empty first read leaves the remembered cards in place
+      // rather than replacing them with "no listings".
+      if (results.isEmpty && _showingRemembered) return;
+      _showingRemembered = false;
       _showResults(results, extract.url, q);
     } on PageChallengeException catch (e) {
       if (gen == _generation) state = state.copyWith(applying: false, note: e.message);
@@ -216,7 +274,13 @@ final class SearchService extends Notifier<SearchState> {
   /// Puts the matches on the stage as a listings card. The card is a tool
   /// result like any other, so the numbers on it came from the page, not
   /// from the model.
-  void _showResults(List<VehicleListing> results, String source, SearchQuery q) {
+  void _showResults(List<VehicleListing> found, String source, SearchQuery q) {
+    // Ids the model can name, unique within this card (L1, L2, ...): the
+    // listings come from several reads, whose own ids repeat.
+    final results = [
+      for (var i = 0; i < found.length; i++)
+        VehicleListing.fromJson({...found[i].toJson(), 'id': 'L${i + 1}'}),
+    ];
     final result = ToolResult(
       id: 'search-${++_resultSeq}',
       tool: AdvisorTools.findVehicles,

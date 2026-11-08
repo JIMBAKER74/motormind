@@ -11,6 +11,10 @@ import '../chat/cards/card_shell.dart';
 import '../chat/cards/formatting.dart';
 import '../chat/chat_service.dart';
 import '../chat/chat_strings.dart';
+import '../chat/turn_stats.dart';
+import '../recipes/recipe_store.dart';
+import '../search/search_service.dart';
+import 'listing_cache.dart';
 import 'listing_signals.dart';
 
 /// The Cards stage's listing card: compact tiles with an image, the facts
@@ -31,14 +35,24 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
   String? _open;
   final _taps = RepeatedTaps();
 
+  /// Listings opened in this card, in order; the second one is a cue the
+  /// model is told about (see ChatService.noticeOpenedTwo).
+  final List<VehicleListing> _opened = [];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final r = widget.shown.result?.result ?? const {};
-    final listings = listingsOf(widget.shown.result);
+    // The model may pick which listings to show (ids); otherwise all.
+    final picked = (widget.shown.request.props['ids'] as List?)?.cast<String>().toSet();
+    final listings = [
+      for (final l in listingsOf(widget.shown.result))
+        if (picked == null || picked.contains(l.id)) l,
+    ];
     final signals = ref.watch(listingSignalsProvider);
     final signalsNotifier = ref.read(listingSignalsProvider.notifier);
     final bigPhoto = ref.watch(bigPhotoProvider);
+    final photo = ref.watch(listingPhotoProvider);
     final sites = {for (final l in listings) BrowserService.siteIdFor(l.sourceUrl) ?? 'web'};
     return CardShell(
       id: 'vehicle_card',
@@ -74,6 +88,7 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
               signalKey: key,
               open: _open == key,
               bigPhoto: bigPhoto == key,
+              photo: photo,
               viewed: signals.viewed.contains(key),
               liked: signals.liked.contains(key),
               onTap: () {
@@ -81,7 +96,17 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
                 // read back, and a tap on a tile is not page content.
                 logDev('tap: listing tile ${listings.indexOf(l) + 1} of ${listings.length}');
                 setState(() => _open = _open == key ? null : key);
-                if (_open == key) signalsNotifier.markViewed(l);
+                if (_open == key) {
+                  signalsNotifier.markViewed(l);
+                  if (!_opened.any((o) => o.id == l.id)) _opened.add(l);
+                  if (_opened.length == 2) {
+                    unawaited(
+                      ref
+                          .read(chatServiceProvider.notifier)
+                          .noticeOpenedTwo(widget.shown, List.of(_opened)),
+                    );
+                  }
+                }
                 // The third quick tap on one tile is a signal, not a toggle.
                 if (_taps.tap(key, DateTime.now())) {
                   ref.read(chatServiceProvider.notifier).noticeTapping(l);
@@ -96,10 +121,37 @@ class _ListingCardsState extends ConsumerState<ListingCards> {
                   unawaited(ref.read(browserProvider.notifier).open(url));
                 }
               },
-              onAsk: () =>
-                  ref.read(chatServiceProvider.notifier).send(ChatStrings.monthlyCostOf(l.title)),
+              onAsk: () => ref
+                  .read(chatServiceProvider.notifier)
+                  .send(
+                    ChatStrings.monthlyCostOf(l.title, price: l.price),
+                    trigger: TurnTrigger.tileCost,
+                    detail: 'tile ${listings.indexOf(l) + 1}',
+                  ),
             ),
+        ?_moreControl(listings.length),
       ],
+    );
+  }
+
+  /// "More from EchoPark (22 of 347)" when the site reports more cars than
+  /// the card holds and its page parameter is known; null otherwise.
+  Widget? _moreControl(int shown) {
+    final search = ref.watch(searchProvider);
+    final site = CuratedSites.byId(search.siteId);
+    final total = ref.watch(lastReadsProvider)[search.siteId]?.check.pageTotal;
+    if (site?.pageParam == null || total == null || shown == 0 || shown >= total) return null;
+    return Center(
+      child: TextButton.icon(
+        key: const Key('more-listings'),
+        onPressed: search.applying ? null : ref.read(searchProvider.notifier).loadMore,
+        icon: const Icon(Icons.expand_more),
+        label: Text(
+          search.applying
+              ? ChatStrings.readingMoreFrom(site!.name)
+              : ChatStrings.moreFrom(site!.name, shown, total),
+        ),
+      ),
     );
   }
 }
@@ -123,6 +175,7 @@ class _ListingTile extends StatelessWidget {
     required this.onTap,
     required this.bigPhoto,
     required this.onBigPhotoTap,
+    required this.photo,
     required this.onLike,
     required this.onDismiss,
     required this.onOpenSite,
@@ -141,6 +194,9 @@ class _ListingTile extends StatelessWidget {
 
   /// Tapping the big photo puts it away.
   final VoidCallback onBigPhotoTap;
+
+  /// Builds a photo from its address (disk-cached in the app).
+  final Widget Function(String url, {double? height}) photo;
   final VoidCallback onLike;
   final VoidCallback onDismiss;
   final VoidCallback onOpenSite;
@@ -177,12 +233,7 @@ class _ListingTile extends StatelessWidget {
                     width: _thumbWidth,
                     height: _thumbHeight,
                     child: image != null && image.startsWith('https://')
-                        ? Image.network(
-                            image,
-                            fit: BoxFit.cover,
-                            cacheWidth: (_thumbWidth * 2).round(),
-                            errorBuilder: (_, _, _) => const _Placeholder(),
-                          )
+                        ? photo(image)
                         : const _Placeholder(),
                   ),
                 ),
@@ -224,13 +275,7 @@ class _ListingTile extends StatelessWidget {
                   onTap: onBigPhotoTap,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      image,
-                      fit: BoxFit.cover,
-                      height: _bigPhotoHeight,
-                      errorBuilder: (_, _, _) =>
-                          const SizedBox(height: _bigPhotoHeight, child: _Placeholder()),
-                    ),
+                    child: photo(image, height: _bigPhotoHeight),
                   ),
                 ),
               ),

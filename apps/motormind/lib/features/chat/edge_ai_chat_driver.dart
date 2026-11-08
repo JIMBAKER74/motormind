@@ -46,7 +46,7 @@ final class EdgeAiChatDriver implements ChatDriver {
     );
     logDev(
       'system instruction: ${systemInstruction.length} chars '
-      '(~${systemInstruction.length ~/ 4} tokens) of ${spec.maxTokens} context',
+      '(~${systemInstruction.length ~/ 4} tokens) of a ${model.maxTokens}-token window',
     );
     return EdgeAiChatDriver._(chat);
   }

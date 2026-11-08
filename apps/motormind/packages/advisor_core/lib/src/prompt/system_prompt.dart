@@ -66,7 +66,8 @@ const String _screenSection =
     'After a tool returns, call present(component, result_id) so the numbers are shown as a card; '
     'then one or two sentences at most. To ask something with a few possible answers, or to '
     'collect numbers, call present with choice/multi_choice/input_form instead of asking in prose. '
-    'One structured prompt per turn.';
+    'One structured prompt per turn. A line in [brackets] is what the app saw on screen, not the '
+    'person\'s words: answer it with a component, a short line, or nothing.';
 
 /// Assembles the system prompt from editable text sections plus the fixed
 /// contract sections, the component vocabulary and the live situation
@@ -114,17 +115,30 @@ class SystemPromptBuilder {
       ..writeln(ComponentRegistry.describeForPrompt())
       ..writeln();
 
-    final guidance = mode == null ? null : modeGuidance[mode];
-    if (mode != null && guidance != null) {
+    // Every mode's guidance is here, and the current mode is named in each
+    // message's context line. The instruction is built once per session,
+    // usually before a mode is chosen, so guidance for "the current mode"
+    // alone never reached the model (design notes, DD-Q23, option c).
+    final modes = [
+      for (final m in ShoppingMode.values)
+        if (modeGuidance[m] case final g?)
+          '- When the person is ${m.words}: ${g.trim().replaceAll('\n', ' ')}',
+    ];
+    if (modes.isNotEmpty) {
       buffer
-        ..writeln('# Current shopping mode: ${mode.name}')
-        ..writeln(guidance.trim())
-        ..writeln();
-    } else {
-      buffer
+        // Worded as guidance to follow, not something to say: "the current
+        // one is named with each message" made Gemma 4 E2B reply with the
+        // bare word "browsing" (headless emulator, 2026-11-02).
         ..writeln(
-          '# Shopping mode: unknown. Infer it (browsing/dreaming/practical/buying) and record it with update_profile.',
+          '# How to speak in each shopping mode (the [Screen] line says which applies; '
+          'never just repeat the mode)',
         )
+        ..writeln(modes.join('\n'))
+        ..writeln();
+    }
+    if (mode == null) {
+      buffer
+        ..writeln('Mode unknown until the person says; record it with update_profile.')
         ..writeln();
     }
 

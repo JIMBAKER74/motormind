@@ -56,6 +56,12 @@ flutter doctor --android-licenses
 4. Create an emulator (Device Manager, Pixel 8 Pro, API 35, arm64) with at least **6 GB
    RAM** so a 2.4 GB model fits with headroom.
 
+   *Low-memory emulators (2026-10-18).* Android Studio's default "Medium Phone" device is
+   configured with 2 GB of RAM (it reports about 4 GB total and 2 GB free). Motormind runs
+   there, on the CPU, with the smallest context window it allows (4,096 tokens), and a
+   first turn takes about a minute. It is a useful stand-in for a low-memory phone and a
+   poor one for timing. For timing, use `motormind_pixel8` (8 GB) or a real phone.
+
 Real device: enable developer options and USB debugging on the Samsung Fold 4, plug in,
 `flutter devices`.
 
@@ -145,39 +151,9 @@ mirror), the `hf` CLI is installed via pipx:
 hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ~/models/motormind
 ```
 
-## 8. Firebase (store flavor only)
+## 8. Analytics and the Firebase key
 
-Installed 2026-10-04: Firebase CLI 15.32.1 via Homebrew (`/opt/homebrew/bin/firebase`) and
-FlutterFire CLI 1.4.1 (`~/.pub-cache/bin`, now on PATH via `~/.zshrc`). The "Firebase CLI
-not installed" message came from FlutterFire because the CLI genuinely was not installed;
-an earlier `npm install -g` would have needed `sudo` on this Mac because `/usr/local/lib` is
-root-owned.
-
-One-time, interactive (needs your Google account in a browser):
-
-```bash
-firebase login
-```
-
-Create a project named `motormind` in the Firebase console (or `firebase projects:create
-motormind-<suffix>`), then generate the platform config into the app:
-
-```bash
-cd "/Users/sirisdev/Documents/personal work/demo-projects/motormind/edge_ai_demo/apps/motormind" && flutterfire configure --project=<your-project-id> --platforms=android,ios --android-package-name=com.sirisdevelopment.motormind --ios-bundle-id=com.sirisdevelopment.motormind
-```
-
-Done on 2026-10-05 for Android against project `motormind-a5a2b` (account
-sirisdevelopment@gmail.com): `lib/firebase_options.dart`, `android/app/google-services.json`
-and `ios/Runner/GoogleService-Info.plist` exist and are committed (project identifiers, not
-secrets; the Android build needs the JSON present because FlutterFire added the
-`google-services` Gradle plugin). The iOS half of `flutterfire configure` fails until Xcode
-is installed (it needs the `xcodeproj` Ruby gem); rerun with `--platforms=ios` afterwards.
-
-Analytics is compiled in only when the build passes the flag; the demo flavor ships a no-op:
-
-```bash
-flutter run --dart-define=MOTORMIND_ANALYTICS=true
-```
+Firebase Analytics is wired in, and the project identifiers are supplied at build time, never committed. Copy `apps/motormind/firebase.env.example` to `firebase.env`, fill it from your Firebase project's app settings (API key, app id, sender id, project id), and build with `--dart-define-from-file=firebase.env`. Without that file the app runs with analytics as a no-op. The Android `google-services` Gradle plugin is not used; `firebase_core` is initialized from Dart with those values, so no `google-services.json` or `GoogleService-Info.plist` is needed. Why the key is treated this way is in the README under "Analytics and the Firebase key."
 
 ## Release signing (Android)
 

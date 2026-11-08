@@ -1,3 +1,4 @@
+import 'package:advisor_core/advisor_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +6,10 @@ import '../../app/widgets/compact_chip.dart';
 import '../../services/advisor_model_service.dart';
 import '../../services/token_store.dart';
 import '../advisor/display_agent.dart';
+import '../chat/turn_stats.dart';
+import '../disclosures/disclosures_notifier.dart';
+import '../listings/listing_cache.dart';
+import '../recipes/recipe_store.dart';
 import 'model_catalog.dart';
 
 /// Where the person picks, downloads and removes on-device models, enters a
@@ -59,6 +64,8 @@ class ModelsScreen extends ConsumerWidget {
                   .read(displayAgentModeProvider.notifier)
                   .set(v ? DisplayAgentMode.model : DisplayAgentMode.rules),
             ),
+            const _TestToolsSection(),
+            const _TurnStatsSection(),
           ],
         ),
         _ => const Center(child: CircularProgressIndicator()),
@@ -257,6 +264,107 @@ class _ModelCard extends ConsumerWidget {
             },
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// This session's turns, timed: what started each, when the first word
+/// came, how long it took, which tools ran. On this screen so the numbers
+/// can be read on the phone, without a cable or a log.
+class _TurnStatsSection extends ConsumerWidget {
+  const _TurnStatsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final turns = ref.watch(turnStatsProvider);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 24),
+      child: Column(
+        key: const Key('turn-stats'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('This session\'s turns', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          if (turns.isEmpty)
+            Text('None yet.', style: theme.textTheme.bodySmall)
+          else
+            for (final t in turns)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(t.describe(), style: theme.textTheme.bodySmall),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a tester needs without a cable: how each site was last read, and
+/// ways back to a clean start. The downloaded model is kept; nobody wants
+/// to fetch 2.6 GB again to test a first launch.
+class _TestToolsSection extends ConsumerWidget {
+  const _TestToolsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final reads = ref.watch(lastReadsProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    String time(DateTime t) =>
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 0),
+      child: Column(
+        key: const Key('test-tools'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Test tools', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          if (reads.isEmpty)
+            Text('No page read yet this session.', style: theme.textTheme.bodySmall)
+          else
+            for (final e in reads.entries)
+              Text(
+                '${CuratedSites.nameFor(e.key)} recipe v${e.value.version}: '
+                '${e.value.check} · ${time(e.value.at)}',
+                style: theme.textTheme.bodySmall,
+              ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              OutlinedButton(
+                key: const Key('clear-remembered'),
+                onPressed: () async {
+                  await ref.read(listingCacheProvider).clear();
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Remembered cards cleared.')),
+                  );
+                },
+                child: const Text('Clear remembered cards'),
+              ),
+              OutlinedButton(
+                key: const Key('reset-first-launch'),
+                onPressed: () async {
+                  await ref.read(listingCacheProvider).clear();
+                  await ref.read(disclosuresAcknowledgedProvider.notifier).reset();
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Reset. Close Motormind and open it again to see a first launch; '
+                        'the model stays downloaded.',
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Reset to a first launch'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

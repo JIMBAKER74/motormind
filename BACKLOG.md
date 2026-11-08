@@ -224,6 +224,29 @@ VA-10, then VA-8 and VA-12.
 - **VA-2.6.5** Every tile tap, widget failure and image refresh is a log line, so a
   session reads back (the owner's rule: the log says what happened, not only what broke).
   **Done.** Next: taps on other controls, and the journal in the display agent's record.
+- **VA-1.4.6** Fresh install on a low-memory device (2026-10-18): window floor 4,096;
+  launch read waits for the real page; only loadable models offered or auto-loaded; a
+  full window reopens the session and resends once. **Done.** Next: a true fresh install
+  is part of "ready" for every build (QUESTIONS C13); trim tool declarations (TQ89).
+- **VA-11.2.13** Photos from the page's own data (2026-10-22): a recipe may carry a data
+  rule; EchoPark v3 reads `__JSS_STATE__`, every car with its photos. **Done.** Open:
+  report which path was used (TQ91).
+- **VA-11.2.14** Remembered listings and disk-cached photos across launches. **Done.**
+  Open: an age limit (Q93) and a way to clear them (TQ93).
+- **VA-1.4.7** Stats for every turn by trigger, in the log and on the Models screen.
+  **Done.** Open: the Fold measurements, display agent off and on (Q95).
+- **VA-1.4.3** (see above) Display decisions coalesce. **Done in part:** asked only when
+  the state it sees changed, one at a time, ten seconds apart. Not yet measured on a phone.
+- **VA-3.4.1** The model chooses a component from a cue: opening a second listing tells
+  the model which two; it may present `vehicle_compare`. **Done.** Open: how often a 2B
+  model takes the cue (C17).
+- **VA-1.4.8** Round of 2026-11-01/02: defaults applied (7-day remembered cards, the
+  read path in the self-check, the fresh-page line, the still panel, every mode's
+  guidance, the canvas size), Test tools, the per-turn screen line, dead taps anywhere,
+  More from EchoPark, and the per-trigger timings on a headless emulator. **Done.**
+  Found and fixed on the device: the "browsing" echo, Monthly cost? without a usable
+  price, filters inferred from the app's own sentence, the 8,192 window on a 6 GB device,
+  the compare call refused four ways. Open: the same timings on the Fold.
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
