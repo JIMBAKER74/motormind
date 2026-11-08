@@ -340,37 +340,42 @@ void main() {
   });
 
   test('present with an action focuses or closes a card the app has on screen', () async {
-    final calls = <(ArrangeAction, String, String?)>[];
+    final calls = <(ArrangeAction, String)>[];
     final driver = FakeDriver([
       FakeTurn(
         calls: [
-          ('present', {'component': 'vehicle_compare', 'action': 'focus'}),
+          ('present', {'action': 'focus', 'target': 'c12'}),
           ('present', {'component': 'vehicle_card', 'result_id': 'r3', 'action': 'hide'}),
-          ('present', {'component': 'payment_summary', 'action': 'close'}),
+          ('present', {'action': 'close', 'target': 'c99'}),
+          ('present', {'action': 'close'}),
         ],
         text: (r) => 'ok',
       ),
     ]);
     final pipeline = TurnPipeline(
       driver: driver,
-      arrange: (action, component, resultId) {
-        calls.add((action, component, resultId));
-        return component != 'payment_summary';
+      arrange: (action, target) {
+        calls.add((action, target.toString()));
+        return target.id == 'c99' ? 'c99 is not on screen. On screen: c12 vehicle_card' : null;
       },
     );
     final events = await pipeline.run('show the comparison again').toList();
     expect(calls, [
-      (ArrangeAction.focus, 'vehicle_compare', null),
-      (ArrangeAction.close, 'vehicle_card', 'r3'),
-      (ArrangeAction.close, 'payment_summary', null),
+      (ArrangeAction.focus, 'c12'),
+      (ArrangeAction.close, 'vehicle_card (r3)'),
+      (ArrangeAction.close, 'c99'),
     ]);
     final arranged = events.whereType<Arranged>().toList();
-    expect(arranged.map((e) => (e.action, e.componentId, e.resultId)), [
-      (ArrangeAction.focus, 'vehicle_compare', null),
-      (ArrangeAction.close, 'vehicle_card', 'r3'),
+    expect(arranged.map((e) => (e.action, e.target.id, e.target.componentId)), [
+      (ArrangeAction.focus, 'c12', null),
+      (ArrangeAction.close, null, 'vehicle_card'),
     ]);
-    // Not on screen: the model is told so, and nothing new is presented.
-    expect(events.whereType<PresentRejected>().single.errors.single, contains('not on screen'));
+    // The app's error (with its list) reaches the model; a call naming
+    // nothing is refused before the app is asked; nothing new is presented.
+    final errors = events.whereType<PresentRejected>().map((e) => e.errors.single).toList();
+    expect(errors, hasLength(2));
+    expect(errors.first, contains('On screen: c12'));
+    expect(errors.last, contains('needs target'));
     expect(events.whereType<Presented>(), isEmpty);
   });
 

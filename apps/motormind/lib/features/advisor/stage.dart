@@ -1,4 +1,4 @@
-import 'package:advisor_core/advisor_core.dart' show ArrangeAction;
+import 'package:advisor_core/advisor_core.dart' show ArrangeAction, ArrangeTarget;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../chat/chat_state.dart';
@@ -55,6 +55,17 @@ final class StageNotifier extends Notifier<StageState> {
   @override
   StageState build() => const StageState();
 
+  /// What the person did to the stage by hand since the model's last turn,
+  /// for the `changed` field of the context record (design notes 5.3).
+  final List<String> _byPerson = [];
+
+  /// Returns and forgets [_byPerson].
+  List<String> takePersonChanges() {
+    final out = [..._byPerson];
+    _byPerson.clear();
+    return out;
+  }
+
   /// Adds a component at the front. [bringForward] flips to Cards; the live
   /// search leaves the web page in view and only badges the Cards tab.
   void show(ShownComponent c, {bool bringForward = true}) {
@@ -82,18 +93,23 @@ final class StageNotifier extends Notifier<StageState> {
   /// Shows card [i] large (from the chip strip).
   void focusCard(int i) {
     assert(i >= 0 && i < state.cards.length, 'card index $i out of range');
+    _byPerson.add('the person opened c${state.cards[i].id}');
     state = state.copyWith(focus: i.clamp(0, state.cards.length - 1), mode: StageMode.cards);
   }
 
-  /// The model's change to a card already on the stage: the newest card
-  /// showing [componentId] (from [resultId], when given) is shown large or
-  /// taken off. False when there is no such card. Focusing brings the cards
-  /// forward, as the person asked for that card; closing the last card
-  /// leaves the page in view.
-  bool arrange(ArrangeAction action, String componentId, String? resultId) {
+  /// The model's change to a card already on the stage: the card with the
+  /// app's id in [target] ("c12"), else the newest card showing its
+  /// component (from its result, when given), is shown large or taken off.
+  /// False when there is no such card. Focusing brings the cards forward, as
+  /// the person asked for that card; closing the last card leaves the page
+  /// in view.
+  bool arrange(ArrangeAction action, ArrangeTarget target) {
+    final id = int.tryParse(target.id?.replaceFirst(RegExp('^c', caseSensitive: false), '') ?? '');
     final i = state.cards.indexWhere(
-      (c) =>
-          c.request.component.id == componentId && (resultId == null || c.result?.id == resultId),
+      (c) => target.id != null
+          ? c.id == id
+          : c.request.component.id == target.componentId &&
+                (target.resultId == null || c.result?.id == target.resultId),
     );
     if (i < 0) return false;
     switch (action) {
@@ -115,7 +131,10 @@ final class StageNotifier extends Notifier<StageState> {
   void showWeb() => state = state.copyWith(mode: StageMode.web, userSet: true);
 
   /// From the person's own Web/Cards control.
-  void setMode(StageMode m) => state = state.copyWith(mode: m, userSet: true);
+  void setMode(StageMode m) {
+    if (m != state.mode) _byPerson.add('the person switched the stage to ${m.name}');
+    state = state.copyWith(mode: m, userSet: true);
+  }
 
   /// From the display decision; never overrides a manual flip.
   void applyDecision(StageMode m) {

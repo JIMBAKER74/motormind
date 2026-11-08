@@ -43,6 +43,7 @@ class TurnStats {
     required this.outputPieces,
     required this.tools,
     required this.displayAgentOn,
+    this.contextTokens,
     this.firstTextMs,
     this.failed = false,
   });
@@ -63,6 +64,11 @@ class TurnStats {
   /// Characters sent to the model this turn: the message plus the context
   /// lines the app adds. About four characters to a token.
   final int promptChars;
+
+  /// Estimated tokens of the context the app added to the person's words
+  /// (the record, the filters and listings lines), for the budget (design
+  /// notes DD-R36, DD-R41). Null when none was added.
+  final int? contextTokens;
 
   /// Streamed pieces of reply text; on this engine one piece is about one
   /// token.
@@ -96,6 +102,7 @@ class TurnStats {
       if (tools.isNotEmpty) 'tools ${tools.map((t) => '${t.$1}@${t.$2}ms').join(',')}',
       'out $outputPieces${rate == null ? '' : ' (${rate.toStringAsFixed(1)}/s)'}',
       'prompt ${promptChars}ch',
+      if (contextTokens != null) 'context ~${contextTokens}tok',
       if (displayAgentOn) 'display-agent on',
       if (failed) 'FAILED',
     ].join(' · ');

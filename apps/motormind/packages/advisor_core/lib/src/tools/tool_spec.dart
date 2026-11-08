@@ -284,6 +284,7 @@ abstract final class AdvisorTools {
           'result_id': _string(description: 'from a tool result'),
           'surface': _string(values: ['docked', 'fullscreen']),
           'action': _string(values: ['show', 'focus', 'close'], description: 'default show'),
+          'target': _string(description: 'focus/close: an id from the [Screen] active list'),
           'title': _string(),
           'highlights': {
             'type': 'array',

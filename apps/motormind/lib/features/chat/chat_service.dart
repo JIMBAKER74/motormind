@@ -123,13 +123,13 @@ final class ChatService extends Notifier<ChatState> {
     }
     await _driver?.close();
     _driver = driver;
-    // A new session has seen no screen line yet.
-    _lastScreenLine = null;
+    // A new session has been told nothing about the screen yet.
+    _recorder.reset();
     _pipeline = TurnPipeline(
       driver: driver,
       profile: profile,
       external: ref.read(externalToolsProvider).call,
-      arrange: ref.read(stageProvider.notifier).arrange,
+      arrange: _arrange,
     );
     return true;
   }
@@ -157,9 +157,8 @@ final class ChatService extends Notifier<ChatState> {
     final driver = _driver;
     if (driver == null) return;
     final clock = Stopwatch()..start();
-    final screen = _screenLine(profile.mode);
-    _lastScreenLine = screen;
-    final prompt = '$screen\n\n$_warmUpCue';
+    final record = _recorder.next(_record(profile.mode), force: true);
+    final prompt = '${record.text}\n\n$_warmUpCue';
     _warming = driver.warmUp(prompt).timeout(warmUpLimit, onTimeout: driver.cancel).whenComplete(
       () {
         _warming = null;
@@ -203,51 +202,157 @@ final class ChatService extends Notifier<ChatState> {
   /// unfolded foldable), after Material's window size classes.
   static const _wideWidthDp = 600;
 
-  /// The screen line the model was last given; the next is sent only if it
-  /// differs ("say what changed", design notes principle 16).
-  String? _lastScreenLine;
+  /// What the model has been told about the screen this session; sends only
+  /// what changed (design notes 5.3, principle 16).
+  final _recorder = ContextRecorder();
 
-  /// Longest question text quoted in the screen line.
+  /// Longest question text quoted in the context record.
   static const _screenQuestionChars = 60;
 
-  /// Most stage components named in the screen line.
-  static const _screenStageItems = 4;
+  /// The context record for this moment: the screen's goal, the frame, the
+  /// active list and what changed. Taking it consumes [_changed] and the
+  /// stage's record of the person's own changes.
+  ContextRecord _record(ShoppingMode? mode) {
+    final stage = ref.read(stageProvider);
+    final surface = ref.read(surfaceProvider);
+    final changed = [..._changed, ...ref.read(stageProvider.notifier).takePersonChanges()];
+    _changed.clear();
+    return ContextRecord(
+      goal: _screenGoal(),
+      frame:
+          'the person is ${mode?.words ?? 'not yet saying how they shop'}; '
+          '${surface.name}, stage ${stage.mode.name}; '
+          'keyboard ${ref.read(keyboardOpenProvider) ? 'up' : 'down'}',
+      active: _activeList(),
+      changed: changed,
+    );
+  }
 
-  /// What is on screen, in one bracketed line for the model: the shopping
-  /// mode, the stage's components by id and state, what is live in the
-  /// conversation, the keyboard. Names, ids, counts and states only, never a
-  /// price or the person's numbers (design notes 5.3, the context record).
-  String _screenLine(ShoppingMode? mode) {
+  /// The components on screen, by the app's ids (DD-R37): live questions
+  /// and the filters card in the conversation, then the stage's cards,
+  /// newest first. Answered questions are history, not on screen. Names,
+  /// ids, counts and states only, never a price or the person's numbers.
+  List<ActiveComponent> _activeList() {
     final stage = ref.read(stageProvider);
     final focused = stage.focused;
-    final parts = <String>[];
-    for (final c in stage.cards.take(_screenStageItems)) {
-      final id = c.request.component.id;
-      final r = c.result;
-      final focus = identical(c, focused) ? ', focused' : '';
-      final what = switch (id) {
-        'vehicle_card' => switch (listingsOf(r).length) {
-          0 => 'listings (none)',
-          final n => 'listings ${r?.id}: L1-L$n, $n cars',
-        },
-        'vehicle_compare' => 'compare ${(c.request.props['ids'] as List?)?.join(', ') ?? ''}',
-        _ => r == null ? id : '$id ${r.id}',
-      };
-      parts.add('$what$focus');
-    }
-    final live = [
+    return [
       for (final e in state.timeline)
         if (e is ComponentEntry && !e.shown.answered && e.shown.request.component.isInteraction)
-          // From the search, not the display decision: the display
-          // controller watches this service, so reading it here would loop.
-          e.shown.request.component.id == 'search_filters'
-              ? 'filters card (${ref.read(searchProvider).query.isEmpty ? 'nothing set' : 'set'})'
-              : '${e.shown.request.component.id} "${_clip('${e.shown.request.props['question'] ?? e.shown.request.props['title'] ?? ''}')}"',
+          ActiveComponent(
+            id: 'c${e.shown.id}',
+            component: e.shown.request.component.id,
+            region: Region.conversation,
+            state: ComponentState.expanded,
+            // From the search, not the display decision: the display
+            // controller watches this service, so reading it here would loop.
+            detail: e.shown.request.component.id == 'search_filters'
+                ? (ref.read(searchProvider).query.isEmpty ? 'nothing set' : 'set')
+                : '"${_clip('${e.shown.request.props['question'] ?? e.shown.request.props['title'] ?? ''}')}"',
+          ),
+      for (final c in stage.cards)
+        ActiveComponent(
+          id: 'c${c.id}',
+          component: c.request.component.id,
+          region: Region.stage,
+          state: stage.mode == StageMode.web
+              ? ComponentState.hidden
+              : identical(c, focused)
+              ? ComponentState.focused
+              : ComponentState.summary,
+          detail: switch (c.request.component.id) {
+            'vehicle_card' => switch (listingsOf(c.result).length) {
+              0 => '${c.result?.id}, none',
+              final n => '${c.result?.id}, $n cars, L1-L$n',
+            },
+            'vehicle_compare' => (c.request.props['ids'] as List?)?.join(', ') ?? '',
+            _ => c.result?.id ?? '',
+          },
+        ),
     ];
-    return '[Screen: the person is ${mode?.words ?? 'not yet saying how they shop'}; '
-        'stage ${stage.mode.name}${parts.isEmpty ? '' : ': ${parts.join('; ')}'}; '
-        'conversation: ${live.isEmpty ? 'nothing waiting' : live.join('; ')}; '
-        'keyboard ${ref.read(keyboardOpenProvider) ? 'up' : 'down'}.]';
+  }
+
+  /// What the screen is deciding right now, one line (design notes 5.7,
+  /// DD-Q20's default): the newest live question, else the page, else the
+  /// card shown large. Null when nothing is being decided.
+  String? _screenGoal() {
+    final live = state.timeline.reversed
+        .whereType<ComponentEntry>()
+        .map((e) => e.shown)
+        .where(
+          (s) =>
+              !s.answered &&
+              s.request.component.isInteraction &&
+              s.request.component.id != 'search_filters',
+        )
+        .firstOrNull;
+    if (live != null) {
+      return live.request.component.id == 'input_form'
+          ? 'filling in ${live.request.title ?? 'a form'}'
+          : 'answering "${_clip('${live.request.props['question'] ?? ''}')}"';
+    }
+    final stage = ref.read(stageProvider);
+    if (stage.mode == StageMode.web) {
+      return 'looking at the ${CuratedSites.nameFor(ref.read(searchProvider).siteId)} page';
+    }
+    final f = stage.focused;
+    if (f == null) return null;
+    return switch (f.request.component.id) {
+      'vehicle_card' => switch (listingsOf(f.result).length) {
+        0 => null,
+        final n => 'choosing which of $n cars to look at',
+      },
+      'vehicle_compare' =>
+        'comparing ${(f.request.props['ids'] as List?)?.join(' and ') ?? 'listings'}',
+      final id => 'reading the $id card',
+    };
+  }
+
+  /// The pipeline's [ArrangeHandler]: the stage applies it, or the model is
+  /// told what is on the stage (DD-R38: an invalid reference returns the
+  /// list).
+  String? _arrange(ArrangeAction action, ArrangeTarget target) {
+    if (ref.read(stageProvider.notifier).arrange(action, target)) return null;
+    final onStage = _activeList().where((a) => a.region == Region.stage).map((a) => a.describe());
+    return '$target is not a card on the stage. On the stage: '
+        '${onStage.isEmpty ? 'nothing' : onStage.join('; ')}.';
+  }
+
+  /// When the app went to the background; null while in front.
+  DateTime? _hiddenAt;
+
+  /// Shorter absences (a glance at a message) are not worth telling the
+  /// model about.
+  static const returnNoteAfter = Duration(minutes: 1);
+
+  /// After this long away, the model may say one line on where the person
+  /// was (design notes DD-R14). Shorter, they remember.
+  static const returnCueAfter = Duration(minutes: 10);
+
+  /// The app went to the background (Home, Back on Android, another app).
+  void appHidden({DateTime? now}) => _hiddenAt = now ?? DateTime.now();
+
+  /// The app is in front again. The absence goes into the next record as
+  /// `returned after …` (design notes 5.5); after [returnCueAfter], in a
+  /// conversation the person has spoken in, the model gets a quiet turn in
+  /// which it may orient them or say nothing.
+  void appShown({DateTime? now}) {
+    final at = _hiddenAt;
+    _hiddenAt = null;
+    if (at == null) return;
+    final away = (now ?? DateTime.now()).difference(at);
+    if (away < returnNoteAfter) return;
+    final words = away.inHours >= 1 ? '${away.inHours}h' : '${away.inMinutes}m';
+    _changed.add('returned after $words');
+    final spoke = state.messages.any((m) => m.role == MessageRole.user);
+    if (away < returnCueAfter || !spoke || !state.ready || state.busy) return;
+    unawaited(
+      _send(
+        '[The person came back after $words. If it would help, say in one short line where '
+        'they left off; otherwise say nothing.]',
+        trigger: TurnTrigger.signal,
+        detail: 'returned',
+      ),
+    );
   }
 
   /// A value's shape: map keys with their shapes, a list's length and its
@@ -344,11 +449,7 @@ final class ChatService extends Notifier<ChatState> {
         );
     final siteName = CuratedSites.nameFor(search.siteId);
     final signals = ref.read(listingSignalsProvider.notifier).summary(_listingsOnStage());
-    final noticed = _signals.isEmpty ? '' : ' The person ${_signals.join('; ')}.';
-    _signals.clear();
-    final signalContext = signals == null && noticed.isEmpty
-        ? ''
-        : '\n[Listings: ${signals ?? 'none viewed'}.$noticed]';
+    final signalContext = signals == null ? '' : '\n[Listings: $signals.]';
     final searchContext = !hasFiltersCard
         ? ''
         : search.query.isEmpty
@@ -356,9 +457,8 @@ final class ChatService extends Notifier<ChatState> {
               'site $siteName. Do not ask what kind or what price; they can tap or tell you.]'
         : '\n\n[Already set on the filter card: ${search.query.describe()} on $siteName; '
               '${search.lastCount ?? 0} listings read. Do not ask about these again.]';
-    final screen = _screenLine(pipeline.profile.mode);
-    final screenContext = screen == _lastScreenLine ? '' : '\n$screen';
-    _lastScreenLine = screen;
+    final record = _recorder.next(_record(pipeline.profile.mode));
+    final screenContext = record.text.isEmpty ? '' : '\n${record.text}';
     // The app's context lines first and the person's words last: a small
     // model continues what it reads last, and with the screen line last it
     // replied with the bare mode name ("browsing [shopping_mode: browsing]",
@@ -366,6 +466,15 @@ final class ChatService extends Notifier<ChatState> {
     final context = (searchContext + signalContext + screenContext).trim();
     final prompt = context.isEmpty ? text.trim() : '$context\n\n${text.trim()}';
     final promptChars = prompt.length;
+    final contextTokens = context.isEmpty ? null : ContextRecorder.estimateTokens(context);
+    // Field names and sizes only: the record's values stay out of the log.
+    if (contextTokens != null) {
+      logDev(
+        'context ~${contextTokens}tok (record ${record.tokens}tok'
+        '${record.fields.isEmpty ? '' : ': ${record.fields.join(', ')}'}'
+        '${record.cut > 0 ? ', ${record.cut} cut' : ''})',
+      );
+    }
     // What is on the stage can be named by the model (compare two listings).
     for (final c in ref.read(stageProvider).cards) {
       if (c.result case final r?) pipeline.remember(r);
@@ -456,8 +565,8 @@ final class ChatService extends Notifier<ChatState> {
             if (request.surface == SurfaceState.fullscreen) {
               ref.read(surfaceProvider.notifier).request(SurfaceState.fullscreen);
             }
-          case Arranged(:final action, :final componentId, :final resultId):
-            logDev('arranged ${action.name} $componentId${resultId == null ? '' : ' ($resultId)'}');
+          case Arranged(:final action, :final target):
+            logDev('arranged ${action.name} $target');
           case InputRejected(:final arguments):
             state = state.copyWith(guardNote: ChatStrings.refusedInputs(arguments));
           case PresentRejected(:final errors):
@@ -532,6 +641,7 @@ final class ChatService extends Notifier<ChatState> {
               firstTextMs: firstTextMs,
               totalMs: clock.elapsedMilliseconds,
               promptChars: promptChars,
+              contextTokens: contextTokens,
               outputPieces: pieces,
               tools: tools,
               displayAgentOn: ref.read(displayAgentModeProvider) == DisplayAgentMode.model,
@@ -599,10 +709,10 @@ final class ChatService extends Notifier<ChatState> {
   /// [ChatStrings.tappingQuestion] applies to it.
   VehicleListing? _tappedListing;
 
-  /// Signals the app noticed since the last turn, told to the model with
-  /// the next message so it can respond to what the person did, not only
-  /// to what they typed (the design notes' per-turn context record).
-  final List<String> _signals = [];
+  /// What happened since the model's last turn (taps, answers to the app's
+  /// own questions, a return from the background), oldest first; the
+  /// `changed` field of the next context record (design notes 5.3, DD-R42).
+  final List<String> _changed = [];
 
   /// Option ids of the choice Motormind offers after repeated taps.
   static const attentionPrefix = 'attention-';
@@ -661,7 +771,7 @@ final class ChatService extends Notifier<ChatState> {
       },
     }, id: _componentIds.next());
     if (shown == null) return;
-    _signals.add('tapped the same listing ${RepeatedTaps.threshold} times (${l.title})');
+    _changed.add('tapped the same listing ${RepeatedTaps.threshold} times (${l.title})');
     state = state.copyWith(timeline: [...state.timeline, ComponentEntry(shown)]);
   }
 
@@ -687,7 +797,7 @@ final class ChatService extends Notifier<ChatState> {
     );
     if (pending) return;
     _deadTapRegion = region;
-    _signals.add('tapped $region ${TapJournal.threshold} times and nothing changed');
+    _changed.add('tapped $region ${TapJournal.threshold} times and nothing changed');
     final shown = validatedComponent({
       'component': 'choice',
       'props': {
@@ -714,7 +824,7 @@ final class ChatService extends Notifier<ChatState> {
     _markAnswered(source);
     final want = id.substring(lookPrefix.length);
     final region = _deadTapRegion ?? 'the screen';
-    _signals.add('asked for: $want');
+    _changed.add('asked for: $want');
     switch (want) {
       case 'bigger':
         // The cards get the whole screen, or the panel does.
@@ -745,7 +855,7 @@ final class ChatService extends Notifier<ChatState> {
     _markAnswered(source);
     final l = _tappedListing;
     final want = id.substring(attentionPrefix.length);
-    _signals.add('asked for: $want');
+    _changed.add('asked for: $want');
     if (l == null) return true;
     final key = ListingSignalsNotifier.keyFor(l);
     switch (want) {

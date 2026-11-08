@@ -127,25 +127,41 @@ enum ArrangeAction {
   };
 }
 
-/// Applies [action] to the card on screen showing [componentId] (and, when
-/// given, [resultId]). True when such a card was there and the action was
-/// applied; false tells the model it named something not on screen.
-typedef ArrangeHandler = bool Function(ArrangeAction action, String componentId, String? resultId);
+/// The card a `present` call with an `action` names: the app's [id] from
+/// the active list ("c12"), or a registry [componentId] (optionally with a
+/// [resultId]) when the model names the kind of card instead.
+final class ArrangeTarget {
+  /// Creates a target; at least one of [id] and [componentId] is set.
+  const ArrangeTarget({this.id, this.componentId, this.resultId});
+
+  /// The app's id of the card, as the active list names it.
+  final String? id;
+
+  /// The registry id of the card.
+  final String? componentId;
+
+  /// The result the card renders from.
+  final String? resultId;
+
+  @override
+  String toString() => id ?? '${componentId ?? '?'}${resultId == null ? '' : ' ($resultId)'}';
+}
+
+/// Applies [action] to the card [target] names. Returns null when it was
+/// applied, else the error for the model, which should carry the active
+/// list (DD-R38: an invalid reference returns the list).
+typedef ArrangeHandler = String? Function(ArrangeAction action, ArrangeTarget target);
 
 /// A card already on screen was focused or closed by the model.
 final class Arranged extends TurnEvent {
-  /// Creates an event for [action] on [componentId], optionally narrowed to
-  /// [resultId].
-  const Arranged(this.action, this.componentId, {this.resultId});
+  /// Creates an event for [action] on [target].
+  const Arranged(this.action, this.target);
 
   /// What was done to the card.
   final ArrangeAction action;
 
-  /// The registry id of the card acted on.
-  final String componentId;
-
-  /// The result the card renders from, when the model named it.
-  final String? resultId;
+  /// The card acted on, as the model named it.
+  final ArrangeTarget target;
 }
 
 /// A `present` call failed validation; the model was told the [errors].
@@ -387,32 +403,38 @@ class TurnPipeline {
     return {'ok': true, 'shown': request.component.id};
   }
 
-  /// A `present` call naming a card already on screen. Nothing is
-  /// validated beyond the component id: there are no props to check, and the
-  /// app decides whether such a card is there.
+  /// A `present` call naming a card already on screen, by the app's id
+  /// (`target`) or by its component. Nothing is validated beyond the
+  /// component id: there are no props to check, and the app decides whether
+  /// such a card is there.
   Map<String, Object?> _runArrange(
     StreamController<TurnEvent> out,
     ArrangeAction action,
     Map<String, Object?> args,
   ) {
-    final id = args['component']?.toString();
-    final component = id == null ? null : ComponentRegistry.byId(id);
-    if (component == null) {
-      final error = 'component "$id" is not in the registry';
+    Map<String, Object?> reject(String error) {
       out.add(PresentRejected([error]));
       return {'error': error};
     }
-    final resultId = args['result_id']?.toString();
+
+    final id = args['target']?.toString().trim();
+    final componentId = args['component']?.toString();
+    final component = componentId == null ? null : ComponentRegistry.byId(componentId);
+    if ((id == null || id.isEmpty) && component == null) {
+      return reject(
+        'focus/close needs target, an id from the [Screen] active list, or a component on screen',
+      );
+    }
+    final target = ArrangeTarget(
+      id: id == null || id.isEmpty ? null : id,
+      componentId: component?.id,
+      resultId: args['result_id']?.toString(),
+    );
     final handler = arrange;
-    if (handler == null || !handler(action, component.id, resultId)) {
-      final error =
-          '${component.id} is not on screen; the [Screen] line lists what is. Present it '
-          'without action to show it.';
-      out.add(PresentRejected([error]));
-      return {'error': error};
-    }
-    out.add(Arranged(action, component.id, resultId: resultId));
-    return {'ok': true, action.name: component.id};
+    if (handler == null) return reject('nothing on screen can be arranged in this build');
+    if (handler(action, target) case final error?) return reject(error);
+    out.add(Arranged(action, target));
+    return {'ok': true, action.name: target.toString()};
   }
 
   Future<Map<String, Object?>> _runExternal(
