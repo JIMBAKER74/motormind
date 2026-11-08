@@ -1,3 +1,4 @@
+import 'package:advisor_core/advisor_core.dart' show ArrangeAction;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../chat/chat_state.dart';
@@ -82,6 +83,31 @@ final class StageNotifier extends Notifier<StageState> {
   void focusCard(int i) {
     assert(i >= 0 && i < state.cards.length, 'card index $i out of range');
     state = state.copyWith(focus: i.clamp(0, state.cards.length - 1), mode: StageMode.cards);
+  }
+
+  /// The model's change to a card already on the stage: the newest card
+  /// showing [componentId] (from [resultId], when given) is shown large or
+  /// taken off. False when there is no such card. Focusing brings the cards
+  /// forward, as the person asked for that card; closing the last card
+  /// leaves the page in view.
+  bool arrange(ArrangeAction action, String componentId, String? resultId) {
+    final i = state.cards.indexWhere(
+      (c) =>
+          c.request.component.id == componentId && (resultId == null || c.result?.id == resultId),
+    );
+    if (i < 0) return false;
+    switch (action) {
+      case ArrangeAction.focus:
+        state = state.copyWith(focus: i, mode: StageMode.cards, userSet: false);
+      case ArrangeAction.close:
+        final left = [...state.cards]..removeAt(i);
+        state = state.copyWith(
+          cards: left,
+          focus: 0,
+          mode: left.isEmpty ? StageMode.web : state.mode,
+        );
+    }
+    return true;
   }
 
   /// The page needs to be seen (a read in progress, a human check, an

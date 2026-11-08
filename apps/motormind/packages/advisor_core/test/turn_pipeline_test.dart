@@ -339,6 +339,83 @@ void main() {
     expect(events.whereType<PresentRejected>().single.errors.single, contains('unknown component'));
   });
 
+  test('present with an action focuses or closes a card the app has on screen', () async {
+    final calls = <(ArrangeAction, String, String?)>[];
+    final driver = FakeDriver([
+      FakeTurn(
+        calls: [
+          ('present', {'component': 'vehicle_compare', 'action': 'focus'}),
+          ('present', {'component': 'vehicle_card', 'result_id': 'r3', 'action': 'hide'}),
+          ('present', {'component': 'payment_summary', 'action': 'close'}),
+        ],
+        text: (r) => 'ok',
+      ),
+    ]);
+    final pipeline = TurnPipeline(
+      driver: driver,
+      arrange: (action, component, resultId) {
+        calls.add((action, component, resultId));
+        return component != 'payment_summary';
+      },
+    );
+    final events = await pipeline.run('show the comparison again').toList();
+    expect(calls, [
+      (ArrangeAction.focus, 'vehicle_compare', null),
+      (ArrangeAction.close, 'vehicle_card', 'r3'),
+      (ArrangeAction.close, 'payment_summary', null),
+    ]);
+    final arranged = events.whereType<Arranged>().toList();
+    expect(arranged.map((e) => (e.action, e.componentId, e.resultId)), [
+      (ArrangeAction.focus, 'vehicle_compare', null),
+      (ArrangeAction.close, 'vehicle_card', 'r3'),
+    ]);
+    // Not on screen: the model is told so, and nothing new is presented.
+    expect(events.whereType<PresentRejected>().single.errors.single, contains('not on screen'));
+    expect(events.whereType<Presented>(), isEmpty);
+  });
+
+  test('present with an action but no screen to arrange is an error, not a new card', () async {
+    final driver = FakeDriver([
+      FakeTurn(
+        calls: [
+          ('present', {'component': 'vehicle_compare', 'action': 'focus'}),
+        ],
+        text: (r) => 'ok',
+      ),
+    ]);
+    final events = await TurnPipeline(driver: driver).run('hi').toList();
+    expect(events.whereType<PresentRejected>(), hasLength(1));
+    expect(events.whereType<Arranged>(), isEmpty);
+  });
+
+  test('action show, or an unknown action, presents as before', () async {
+    expect(ArrangeAction.parse('show'), isNull);
+    expect(ArrangeAction.parse(null), isNull);
+    expect(ArrangeAction.parse('sparkle'), isNull);
+    expect(ArrangeAction.parse(' Focus '), ArrangeAction.focus);
+    final driver = FakeDriver([
+      FakeTurn(
+        calls: [
+          (
+            'present',
+            {
+              'component': 'choice',
+              'action': 'show',
+              'question': 'Which?',
+              'options': [
+                {'id': 'a', 'label': 'A'},
+                {'id': 'b', 'label': 'B'},
+              ],
+            },
+          ),
+        ],
+        text: (r) => 'ok',
+      ),
+    ]);
+    final events = await TurnPipeline(driver: driver).run('hi').toList();
+    expect(events.whereType<Presented>().single.request.props.containsKey('action'), isFalse);
+  });
+
   test('a choice prompt needs no result and carries its options', () async {
     final driver = FakeDriver([
       FakeTurn(

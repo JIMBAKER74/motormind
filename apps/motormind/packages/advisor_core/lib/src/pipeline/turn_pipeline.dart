@@ -108,6 +108,46 @@ final class Presented extends TurnEvent {
   final bool automatic;
 }
 
+/// What a `present` call may do to a card already on screen, instead of
+/// adding one (design notes 5.4, change operations).
+enum ArrangeAction {
+  /// Show the card large again.
+  focus,
+
+  /// Take the card off the screen.
+  close;
+
+  /// Reads a `present` call's `action`; null for `show`, absent or unknown,
+  /// which present a new card as before. Accepts the near words a small
+  /// model writes for the same request.
+  static ArrangeAction? parse(Object? raw) => switch (raw?.toString().trim().toLowerCase()) {
+    'focus' || 'bring_forward' || 'show_again' => focus,
+    'close' || 'hide' || 'remove' || 'dismiss' => close,
+    _ => null,
+  };
+}
+
+/// Applies [action] to the card on screen showing [componentId] (and, when
+/// given, [resultId]). True when such a card was there and the action was
+/// applied; false tells the model it named something not on screen.
+typedef ArrangeHandler = bool Function(ArrangeAction action, String componentId, String? resultId);
+
+/// A card already on screen was focused or closed by the model.
+final class Arranged extends TurnEvent {
+  /// Creates an event for [action] on [componentId], optionally narrowed to
+  /// [resultId].
+  const Arranged(this.action, this.componentId, {this.resultId});
+
+  /// What was done to the card.
+  final ArrangeAction action;
+
+  /// The registry id of the card acted on.
+  final String componentId;
+
+  /// The result the card renders from, when the model named it.
+  final String? resultId;
+}
+
 /// A `present` call failed validation; the model was told the [errors].
 final class PresentRejected extends TurnEvent {
   /// Creates an event carrying the validation [errors].
@@ -188,6 +228,7 @@ class TurnPipeline {
     FinanceToolHandlers? finance,
     BuyerProfile? profile,
     this.external,
+    this.arrange,
     this.guard = const NarrationGuard(),
     this.inputGuard = const InputProvenanceGuard(),
     this.policy = const PolicyCheck(),
@@ -207,6 +248,11 @@ class TurnPipeline {
   /// becomes an error result. Null when the build offers none, in which
   /// case such calls return an error.
   final ToolCallHandler? external;
+
+  /// Focuses or closes a card on screen for a `present` call with an
+  /// `action`. Null when the app has no screen to arrange, in which case
+  /// such calls return an error.
+  final ArrangeHandler? arrange;
 
   /// Checks numbers the model writes against tool results and user inputs.
   final NarrationGuard guard;
@@ -318,6 +364,9 @@ class TurnPipeline {
     StreamController<TurnEvent> out,
     Map<String, Object?> args,
   ) async {
+    if (ArrangeAction.parse(args['action']) case final action?) {
+      return _runArrange(out, action, args);
+    }
     // A compare that names listing ids but no result: the most recent
     // listings result holding all of them is the only sensible one (Gemma
     // 4 E2B left result_id out on the emulator, 2026-11-02).
@@ -336,6 +385,34 @@ class TurnPipeline {
     }
     out.add(Presented(request, result: target));
     return {'ok': true, 'shown': request.component.id};
+  }
+
+  /// A `present` call naming a card already on screen. Nothing is
+  /// validated beyond the component id: there are no props to check, and the
+  /// app decides whether such a card is there.
+  Map<String, Object?> _runArrange(
+    StreamController<TurnEvent> out,
+    ArrangeAction action,
+    Map<String, Object?> args,
+  ) {
+    final id = args['component']?.toString();
+    final component = id == null ? null : ComponentRegistry.byId(id);
+    if (component == null) {
+      final error = 'component "$id" is not in the registry';
+      out.add(PresentRejected([error]));
+      return {'error': error};
+    }
+    final resultId = args['result_id']?.toString();
+    final handler = arrange;
+    if (handler == null || !handler(action, component.id, resultId)) {
+      final error =
+          '${component.id} is not on screen; the [Screen] line lists what is. Present it '
+          'without action to show it.';
+      out.add(PresentRejected([error]));
+      return {'error': error};
+    }
+    out.add(Arranged(action, component.id, resultId: resultId));
+    return {'ok': true, action.name: component.id};
   }
 
   Future<Map<String, Object?>> _runExternal(

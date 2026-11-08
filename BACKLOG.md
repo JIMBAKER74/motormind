@@ -254,6 +254,12 @@ VA-10, then VA-8 and VA-12.
   tool call logs its argument shape, and the prompt shows a `present choice` example.
   **Done in code and unit tests.** Open: not yet checked on a device (the warm-up's
   first-tap time, Back, airplane mode, whether the model asks with a choice card).
+- **VA-11.1.6** The model changes a card already on screen: `present` takes `action`
+  `focus` or `close` for a component the screen line names, so "back to the list" brings
+  the listings card forward instead of adding a copy, and a comparison can be closed. A
+  card that is not there is an error back to the model. First change operation of design
+  notes 5.4. **Done in code and unit tests.** Open: whether Gemma 4 E2B uses it on a
+  device.
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the

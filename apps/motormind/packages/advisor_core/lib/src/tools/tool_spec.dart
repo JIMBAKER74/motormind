@@ -276,12 +276,14 @@ abstract final class AdvisorTools {
       description:
           'Show a component. After a tool: component + result_id. For a question with a few '
           'answers: choice (or multi_choice) with question and options; for numbers to '
-          'collect: input_form with fields. Never as prose.',
+          'collect: input_form with fields. Never as prose. action focus/close: a card already '
+          'on screen.',
       parameters: _object(
         {
           'component': _string(description: 'registry id'),
           'result_id': _string(description: 'from a tool result'),
           'surface': _string(values: ['docked', 'fullscreen']),
+          'action': _string(values: ['show', 'focus', 'close'], description: 'default show'),
           'title': _string(),
           'highlights': {
             'type': 'array',

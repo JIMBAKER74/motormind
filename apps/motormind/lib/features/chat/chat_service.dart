@@ -129,6 +129,7 @@ final class ChatService extends Notifier<ChatState> {
       driver: driver,
       profile: profile,
       external: ref.read(externalToolsProvider).call,
+      arrange: ref.read(stageProvider.notifier).arrange,
     );
     return true;
   }
@@ -455,6 +456,8 @@ final class ChatService extends Notifier<ChatState> {
             if (request.surface == SurfaceState.fullscreen) {
               ref.read(surfaceProvider.notifier).request(SurfaceState.fullscreen);
             }
+          case Arranged(:final action, :final componentId, :final resultId):
+            logDev('arranged ${action.name} $componentId${resultId == null ? '' : ' ($resultId)'}');
           case InputRejected(:final arguments):
             state = state.copyWith(guardNote: ChatStrings.refusedInputs(arguments));
           case PresentRejected(:final errors):

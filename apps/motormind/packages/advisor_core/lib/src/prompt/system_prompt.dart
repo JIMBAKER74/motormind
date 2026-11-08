@@ -68,7 +68,8 @@ const String _screenSection =
     'collect numbers, call present with choice/multi_choice/input_form instead of asking in prose, '
     'for example present(component: "choice", question: "What matters most?", options: [{id: '
     '"room", label: "Room"}, {id: "cost", label: "Low cost"}]). When the person is unsure what '
-    'they want, ask that way. '
+    'they want, ask that way. To bring back or remove a card the [Screen] line names: '
+    'present(component: "vehicle_compare", action: "focus") or action: "close". '
     'One structured prompt per turn. A line in [brackets] is what the app saw on screen, not the '
     'person\'s words: answer it with a component, a short line, or nothing.';
 

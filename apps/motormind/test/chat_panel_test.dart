@@ -83,6 +83,14 @@ class ScriptedDriver implements ChatDriver {
         'ids': [opened.group(2), opened.group(3)],
       });
       yield const DriverText('Here they are side by side.');
+    } else if (userText.endsWith('back to the list')) {
+      // A card already on screen, focused rather than presented again.
+      await onToolCall('present', {'component': 'vehicle_card', 'action': 'focus'});
+      yield const DriverText('Here is the list again.');
+    } else if (userText.endsWith('close the comparison')) {
+      await onToolCall('present', {'component': 'vehicle_compare', 'action': 'close'});
+      await onToolCall('present', {'component': 'vehicle_compare', 'action': 'close'});
+      yield const DriverText('Closed.');
     } else if (userText.contains('long story')) {
       if (overflowsLeft > 0) {
         overflowsLeft--;
@@ -650,6 +658,22 @@ void main() {
       expect(stage.cards.map((c) => c.request.component.id), contains('vehicle_card'));
       // Its stats say what started it.
       expect(s.container.read(turnStatsProvider).first.trigger, TurnTrigger.signal);
+
+      // Asked to go back, the model focuses the listings card already there
+      // instead of adding a copy.
+      final count = stage.cards.length;
+      final chat = s.container.read(chatServiceProvider.notifier);
+      await _turn(tester, s, () => chat.send('back to the list'));
+      var now = s.container.read(stageProvider);
+      expect(now.cards, hasLength(count));
+      expect(now.focused!.request.component.id, 'vehicle_card');
+      expect(now.mode, StageMode.cards);
+
+      // Closed, the compare leaves the stage; a second close finds nothing.
+      await _turn(tester, s, () => chat.send('close the comparison'));
+      now = s.container.read(stageProvider);
+      expect(now.cards.map((c) => c.request.component.id), isNot(contains('vehicle_compare')));
+      expect(find.byKey(const Key('compare-L1')), findsNothing);
     });
 
     testWidgets('three quick taps on one tile make Motormind ask, and a bigger photo follows', (

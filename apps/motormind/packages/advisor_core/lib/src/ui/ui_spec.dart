@@ -451,7 +451,7 @@ final class PresentRequest {
   /// The keys of a present call that are not its own fields, as props, or
   /// null when there are none.
   static Map<String, Object?>? _strayProps(Map<String, Object?> args) {
-    const own = {'component', 'result_id', 'surface', 'title', 'highlights', 'props'};
+    const own = {'component', 'result_id', 'surface', 'title', 'highlights', 'props', 'action'};
     final stray = {
       for (final e in args.entries)
         if (!own.contains(e.key)) e.key: e.value,
