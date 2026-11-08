@@ -35,6 +35,9 @@ class _BrowserPaneState extends ConsumerState<BrowserPane> {
         NavigationDelegate(
           onPageStarted: service.onLoadStart,
           onPageFinished: (url) async => service.onLoadStop(url, await _controller.getTitle()),
+          onWebResourceError: (e) {
+            if (e.isForMainFrame ?? true) service.onLoadFailed();
+          },
           // Read-only browsing policy (VA-6.1.1): web pages only; no external
           // schemes, no downloads.
           onNavigationRequest: (req) => BrowserService.isWebUrl(req.url)

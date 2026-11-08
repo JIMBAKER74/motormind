@@ -14,9 +14,9 @@ upstream rules were written for a package maintainer's release process and do no
 4. **Do not edit `packages/`** unless the app needs a fix. Prefix such commits with
    `upstream patch:`.
 5. **No secrets in the tree.** Hugging Face tokens live in secure storage or
-   `--dart-define`; `config.json` files are git-ignored. The committed Firebase config
-   (`firebase_options.dart`, `google-services.json`) identifies the project and is not a
-   secret; the analytics SDK is inert unless `MOTORMIND_ANALYTICS=true`.
+   `--dart-define`; `config.json` files are git-ignored. Firebase identifiers come from an
+   ignored `firebase.env` at build time and are never committed; without it analytics is a
+   no-op.
 6. **Keep the backlog current.** When a story lands, mark it in `BACKLOG.md` with the
    commit. New decisions get an ADR in `docs/adr/`.
 7. **Commit attribution:** no AI co-author trailer on commits; the README carries one

@@ -21,6 +21,7 @@ class SearchState {
     this.applying = false,
     this.lastCount,
     this.note,
+    this.fromMemory = false,
     this.page = 1,
   });
 
@@ -44,6 +45,10 @@ class SearchState {
   /// Why the last read produced nothing, in a sentence for the person.
   final String? note;
 
+  /// True when the site could not be read and the cards on the stage are
+  /// the listings already remembered, filtered by the query.
+  final bool fromMemory;
+
   /// Results pages read for this search, from 1; "more" reads the next.
   final int page;
 
@@ -59,6 +64,7 @@ class SearchState {
     int? lastCount,
     String? note,
     bool clearNote = false,
+    bool? fromMemory,
     int? page,
   }) => SearchState(
     query: query ?? this.query,
@@ -67,6 +73,7 @@ class SearchState {
     applying: applying ?? this.applying,
     lastCount: lastCount ?? this.lastCount,
     note: clearNote ? null : (note ?? this.note),
+    fromMemory: fromMemory ?? this.fromMemory,
     page: page ?? this.page,
   );
 }
@@ -239,7 +246,7 @@ final class SearchService extends Notifier<SearchState> {
     // as a labeled strip above them (the stage view decides from
     // `applying`). Flipping to the full page here took the screen from the
     // cards on every search (owner, 2026-10-22).
-    state = state.copyWith(applying: true, clearNote: true);
+    state = state.copyWith(applying: true, clearNote: true, fromMemory: false);
     try {
       final extract = await ref.read(pageReaderProvider)(url: url);
       if (gen != _generation) return; // superseded
@@ -262,19 +269,50 @@ final class SearchService extends Notifier<SearchState> {
       _showingRemembered = false;
       _showResults(results, extract.url, q);
     } on PageChallengeException catch (e) {
-      if (gen == _generation) state = state.copyWith(applying: false, note: e.message);
+      // The check is the person's to complete in the pane, so the pane keeps
+      // the screen; the cards behind it answer the search meanwhile.
+      if (gen == _generation) _answerFromMemory(q, e.message, bringForward: false);
+    } on PageUnreachableException {
+      logDev('site unreachable');
+      if (gen == _generation) {
+        final known = ref.read(listingStoreProvider).all.isNotEmpty;
+        _answerFromMemory(
+          q,
+          known
+              ? ChatStrings.siteUnreachable(state.siteName)
+              : ChatStrings.siteUnreachableNothingKept(state.siteName),
+        );
+      }
     } on Exception catch (e) {
       logDev('search apply failed: $e');
-      if (gen == _generation) {
-        state = state.copyWith(applying: false, note: ChatStrings.pageReadFailed);
-      }
+      if (gen == _generation) _answerFromMemory(q, ChatStrings.pageReadFailed);
     }
+  }
+
+  /// The site could not be read. The cars already known (this session's, or
+  /// remembered from earlier launches) still answer the search, each tile
+  /// showing its age, so a demo without a connection, or a site that is
+  /// down, leaves the filters working. [why] says what happened.
+  void _answerFromMemory(SearchQuery q, String why, {bool bringForward = true}) {
+    final store = ref.read(listingStoreProvider);
+    if (store.all.isEmpty) {
+      state = state.copyWith(applying: false, note: why);
+      return;
+    }
+    final found = store.searchQuery(q, limit: stageListingLimit * state.page);
+    state = state.copyWith(applying: false, note: why, lastCount: found.length, fromMemory: true);
+    _showResults(found, found.firstOrNull?.sourceUrl ?? site.home, q, bringForward: bringForward);
   }
 
   /// Puts the matches on the stage as a listings card. The card is a tool
   /// result like any other, so the numbers on it came from the page, not
   /// from the model.
-  void _showResults(List<VehicleListing> found, String source, SearchQuery q) {
+  void _showResults(
+    List<VehicleListing> found,
+    String source,
+    SearchQuery q, {
+    bool bringForward = true,
+  }) {
     // Ids the model can name, unique within this card (L1, L2, ...): the
     // listings come from several reads, whose own ids repeat.
     final results = [
@@ -305,6 +343,6 @@ final class SearchService extends Notifier<SearchState> {
     stage.removeWhere((s) => s.result?.tool == AdvisorTools.findVehicles);
     // Cards come forward as soon as a search finds something; the page
     // stays one tap away, and the display decision may still choose it.
-    stage.show(shown, bringForward: results.isNotEmpty);
+    stage.show(shown, bringForward: bringForward && results.isNotEmpty);
   }
 }

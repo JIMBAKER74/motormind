@@ -247,6 +247,13 @@ VA-10, then VA-8 and VA-12.
   Found and fixed on the device: the "browsing" echo, Monthly cost? without a usable
   price, filters inferred from the app's own sentence, the 8,192 window on a 6 GB device,
   the compare call refused four ways. Open: the same timings on the Fold.
+- **VA-1.4.9** Round of 2026-11-06/08: the session warms up at launch (the opening
+  context is processed before the first tap; a first turn waits for it rather than
+  discarding it), Android Back sends the app to the background with the conversation
+  kept, a site that cannot be reached answers from remembered listings with a note, every
+  tool call logs its argument shape, and the prompt shows a `present choice` example.
+  **Done in code and unit tests.** Open: not yet checked on a device (the warm-up's
+  first-tap time, Back, airplane mode, whether the model asks with a choice card).
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the

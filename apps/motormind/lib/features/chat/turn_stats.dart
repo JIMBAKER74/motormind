@@ -23,6 +23,10 @@ enum TurnTrigger {
   /// The same message again, after the window filled and the session was
   /// reopened.
   retry,
+
+  /// The session's context processed at launch, before the person asked
+  /// anything, so their first turn does not pay for it. Nothing is shown.
+  warmUp,
 }
 
 /// One turn, timed from the person's side of the screen: when it started,

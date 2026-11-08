@@ -70,6 +70,8 @@ final class ExternalTools {
       extract = await _ref.read(pageReaderProvider)(url: url);
     } on PageChallengeException catch (e) {
       return {'error': e.message};
+    } on PageUnreachableException {
+      return {'error': 'That page could not be reached; the person may be offline.'};
     }
     final text = extract.text;
     final isResults = extract.listings.length >= listingsMeanResultsPage;
@@ -98,7 +100,9 @@ final class ExternalTools {
     await search.apply();
     final s = _ref.read(searchProvider);
     final site = CuratedSites.byId(s.siteId)?.name ?? s.siteId;
-    if (s.note != null) return {'error': s.note, 'query': s.query.describe(), 'site': site};
+    if (s.note != null && !s.fromMemory) {
+      return {'error': s.note, 'query': s.query.describe(), 'site': site};
+    }
     final limit = (args['limit'] as num?)?.toInt() ?? defaultFindLimit;
     final results = _ref.read(listingStoreProvider).searchQuery(s.query, limit: limit);
     return {
@@ -106,7 +110,11 @@ final class ExternalTools {
       'site': site,
       'count': s.lastCount ?? results.length,
       'listings': [for (final l in results) l.toModelJson()],
-      if (results.isEmpty)
+      if (s.fromMemory)
+        'note':
+            '$site could not be read just now, so these are listings remembered from earlier. '
+            'Say so plainly, and that prices may have changed.'
+      else if (results.isEmpty)
         'note':
             'The $site page for this search is open and was read; nothing on it matched. '
             'Say so plainly and suggest loosening a filter or trying another site.',

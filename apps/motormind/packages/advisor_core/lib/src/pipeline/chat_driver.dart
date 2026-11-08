@@ -40,6 +40,12 @@ abstract interface class ChatDriver {
   /// by the driver before generation continues.
   Stream<DriverChunk> send(String userText, {required ToolCallHandler onToolCall});
 
+  /// Processes [text] as an opening message and stops at the model's first
+  /// output, so the session's context is already in the engine when the
+  /// person's first turn arrives. Nothing it produces is shown, and it never
+  /// fails: a warm-up that goes wrong only leaves the first turn slow.
+  Future<void> warmUp(String text);
+
   /// Stops the generation in flight, if any. The stream returned by [send]
   /// ends (possibly with the text produced so far). Best effort.
   Future<void> cancel();

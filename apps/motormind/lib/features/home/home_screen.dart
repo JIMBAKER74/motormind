@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app.dart';
 import '../../app/router.dart';
+import '../../services/app_window.dart';
 import '../advisor/advisor_surface.dart';
 import '../advisor/stage_view.dart';
 
@@ -13,6 +15,17 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      // Only Android has a Back that would close the app from here.
+      canPop: defaultTargetPlatform != TargetPlatform.android,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) sendToBackground();
+      },
+      child: _scaffold(context),
+    );
+  }
+
+  Widget _scaffold(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(appName),

@@ -65,7 +65,10 @@ const String _screenSection =
     '# Screen\n'
     'After a tool returns, call present(component, result_id) so the numbers are shown as a card; '
     'then one or two sentences at most. To ask something with a few possible answers, or to '
-    'collect numbers, call present with choice/multi_choice/input_form instead of asking in prose. '
+    'collect numbers, call present with choice/multi_choice/input_form instead of asking in prose, '
+    'for example present(component: "choice", question: "What matters most?", options: [{id: '
+    '"room", label: "Room"}, {id: "cost", label: "Low cost"}]). When the person is unsure what '
+    'they want, ask that way. '
     'One structured prompt per turn. A line in [brackets] is what the app saw on screen, not the '
     'person\'s words: answer it with a component, a short line, or nothing.';
 
