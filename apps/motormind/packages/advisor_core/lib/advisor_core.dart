@@ -10,6 +10,7 @@
 /// imports Flutter, so every type here runs in a plain `dart test`.
 library;
 
+export 'src/context/context_record.dart';
 export 'src/format.dart';
 export 'src/guard/input_guard.dart';
 export 'src/guard/narration_guard.dart';
