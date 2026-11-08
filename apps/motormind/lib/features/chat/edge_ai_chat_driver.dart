@@ -93,6 +93,20 @@ final class EdgeAiChatDriver implements ChatDriver {
     return out.stream;
   }
 
+  /// A tool the model calls here is answered as cancelled and never run: the
+  /// person has asked for nothing yet.
+  @override
+  Future<void> warmUp(String text) async {
+    try {
+      final chunks = send(text, onToolCall: (_, _) async => const {'status': 'cancelled'});
+      await for (final _ in chunks) {
+        await cancel();
+      }
+    } catch (e) {
+      logDev('warm-up failed: $e');
+    }
+  }
+
   @override
   Future<void> cancel() async {
     _cancelled = true;

@@ -26,6 +26,10 @@ import 'harness.dart';
 class ScriptedDriver implements ChatDriver {
   final List<String> systemInstructions = [];
   final List<String> prompts = [];
+  final List<String> warmUps = [];
+
+  /// Holds the warm-up open until completed, like a slow prefill.
+  Completer<void>? warmGate;
 
   /// How many "long story" turns fail with the engine's full-window error
   /// before one succeeds.
@@ -126,6 +130,12 @@ class ScriptedDriver implements ChatDriver {
   }
 
   @override
+  Future<void> warmUp(String text) async {
+    warmUps.add(text);
+    await warmGate?.future;
+  }
+
+  @override
   Future<void> cancel() async {
     if (!_cancelled.isCompleted) _cancelled.complete();
   }
@@ -190,11 +200,16 @@ typedef Started = ({ScriptedDriver driver, ProviderContainer container});
 bool _paneParked(WidgetTester tester) =>
     tester.getSize(find.byKey(const Key('web-pane-slot'))).height <= 1;
 
-Future<Started> _start(WidgetTester tester, {bool fullscreen = true, Duration? idleLimit}) async {
+Future<Started> _start(
+  WidgetTester tester, {
+  bool fullscreen = true,
+  Duration? idleLimit,
+  Completer<void>? warmGate,
+}) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.reset);
-  final driver = ScriptedDriver();
+  final driver = ScriptedDriver()..warmGate = warmGate;
   await tester.pumpWidget(
     await motormindApp(
       acknowledgedVersion: Disclosures.gateVersion,
@@ -361,7 +376,9 @@ void main() {
         s,
         () => s.container.read(chatServiceProvider.notifier).send('just looking around'),
       );
-      final first = s.driver.prompts.last;
+      // The warm-up carried the first screen line.
+      final first = s.driver.warmUps.single;
+      expect(s.driver.prompts.last, isNot(contains('[Screen:')));
       expect(
         first,
         contains(
@@ -380,6 +397,28 @@ void main() {
         () => s.container.read(chatServiceProvider.notifier).send('just looking still'),
       );
       expect(s.driver.prompts.last, isNot(contains('[Screen:')));
+    });
+
+    testWidgets('the session warms up at launch, and a first turn waits for it', (tester) async {
+      final gate = Completer<void>();
+      final s = await _start(tester, warmGate: gate);
+      expect(s.driver.warmUps.single, contains('[Screen:'));
+      final sent = s.container.read(chatServiceProvider.notifier).send('hello there');
+      await tester.pump();
+      // The person's words are on screen at once; the model gets them when
+      // the warm-up is done, not on top of it.
+      expect(find.text('hello there'), findsOneWidget);
+      expect(s.driver.prompts, isEmpty);
+      gate.complete();
+      await tester.runAsync(() async {
+        await sent;
+        await _untilIdle(s.container);
+      });
+      await tester.pumpAndSettle();
+      // The warm-up already told it what is on screen.
+      expect(s.driver.prompts.single, isNot(contains('[Screen:')));
+      final triggers = s.container.read(turnStatsProvider).map((t) => t.trigger);
+      expect(triggers, [TurnTrigger.typed, TurnTrigger.warmUp]);
     });
 
     testWidgets('a full window reopens the session and sends again, once', (tester) async {

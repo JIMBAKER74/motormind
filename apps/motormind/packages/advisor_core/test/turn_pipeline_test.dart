@@ -26,6 +26,9 @@ class FakeDriver implements ChatDriver {
   }
 
   @override
+  Future<void> warmUp(String text) async {}
+
+  @override
   Future<void> cancel() async {}
 
   @override
@@ -45,6 +48,9 @@ class FailingDriver implements ChatDriver {
     yield const DriverText('Starting... ');
     throw StateError('context window overflow');
   }
+
+  @override
+  Future<void> warmUp(String text) async {}
 
   @override
   Future<void> cancel() async {}

@@ -61,7 +61,9 @@ final class ChatService extends Notifier<ChatState> {
   }
 
   void _noteSearch(SearchState s) {
-    final line = ChatStrings.searchNote(s.query.describe(), s.siteName, s.lastCount ?? 0);
+    final line = s.fromMemory
+        ? ChatStrings.memoryNote(s.query.describe(), s.lastCount ?? 0)
+        : ChatStrings.searchNote(s.query.describe(), s.siteName, s.lastCount ?? 0);
     final t = [...state.timeline];
     final last = t.lastOrNull;
     if (last is MessageEntry &&
@@ -87,6 +89,7 @@ final class ChatService extends Notifier<ChatState> {
         ready: true,
         timeline: [ComponentEntry(Starters.openingPrompt(profile, _componentIds))],
       );
+      _warmUp(profile);
     } on Exception catch (e) {
       logDev('start failed: $e');
       state = state.copyWith(busy: false, error: ChatStrings.startFailed);
@@ -97,6 +100,7 @@ final class ChatService extends Notifier<ChatState> {
   /// one first. False when no model is loaded. The timeline is not touched,
   /// so [start] and the full-window recovery in [_runTurn] share it.
   Future<bool> _openSession(BuyerProfile profile) async {
+    if (_warming case final warming?) await warming;
     final builder = await ref.read(promptAssetsProvider.future);
     final instruction = builder.build(profile: profile, viewport: _viewport());
     final factory = ref.read(chatDriverFactoryProvider);
@@ -127,6 +131,54 @@ final class ChatService extends Notifier<ChatState> {
       external: ref.read(externalToolsProvider).call,
     );
     return true;
+  }
+
+  /// The warm-up in flight; a turn waits for it rather than interrupting
+  /// it, because stopping a prefill partway would throw away work the turn
+  /// is about to need.
+  Future<void>? _warming;
+
+  /// Longest the warm-up may run. It ends by itself at the model's first
+  /// output, 12 to 14 s on the slowest device measured; past this limit
+  /// something is wrong and the person's turn should not wait on it.
+  static const warmUpLimit = Duration(seconds: 45);
+
+  /// What the model is told at the warm-up. The model answers a bracketed
+  /// line with a component, a short line or nothing, and the driver stops
+  /// it at its first output either way.
+  static const _warmUpCue = '[The app just opened. Nothing to answer yet.]';
+
+  /// Processes the opening context while the person looks at the cards, so
+  /// their first tap answers like a later one (the first turn of a session
+  /// took 12 to 14 s to a first word, later turns under 4 s; design notes
+  /// Q98). The cost is a few seconds of CPU at every launch.
+  void _warmUp(BuyerProfile profile) {
+    final driver = _driver;
+    if (driver == null) return;
+    final clock = Stopwatch()..start();
+    final screen = _screenLine(profile.mode);
+    _lastScreenLine = screen;
+    final prompt = '$screen\n\n$_warmUpCue';
+    _warming = driver.warmUp(prompt).timeout(warmUpLimit, onTimeout: driver.cancel).whenComplete(
+      () {
+        _warming = null;
+        if (!ref.mounted) return;
+        ref
+            .read(turnStatsProvider.notifier)
+            .add(
+              TurnStats(
+                trigger: TurnTrigger.warmUp,
+                detail: 'launch',
+                startedAt: DateTime.now().subtract(clock.elapsed),
+                totalMs: clock.elapsedMilliseconds,
+                promptChars: prompt.length,
+                outputPieces: 0,
+                tools: const [],
+                displayAgentOn: ref.read(displayAgentModeProvider) == DisplayAgentMode.model,
+              ),
+            );
+      },
+    );
   }
 
   /// The canvas, for the opening context (design notes DD-R10): size and
@@ -332,6 +384,7 @@ final class ChatService extends Notifier<ChatState> {
     }
 
     try {
+      if (_warming case final warming?) await warming;
       final idleLimit = ref.read(turnIdleLimitProvider);
       Timer? watchdog;
       var stoppedByWatchdog = false;
@@ -356,10 +409,10 @@ final class ChatService extends Notifier<ChatState> {
           case ThinkingDelta():
             break;
           case ToolStarted(:final name, :final args):
-            logDev('tool $name');
-            // The shape of a present call (keys and value types, no values),
-            // so a call the registry refuses can be read off the log.
-            if (name == AdvisorTools.present) logDev('present shape: ${_shape(args)}');
+            // The shape of the call (keys and value types, no values): Gemma
+            // 4 E2B flattens, renames and drops arguments, and what it
+            // actually sent is what a refused call has to be fixed against.
+            logDev('tool $name ${_shape(args)}');
             tools.add((name, clock.elapsedMilliseconds));
             state = state.copyWith(activeTool: name);
           case ToolFinished():
