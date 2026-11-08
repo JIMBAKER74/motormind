@@ -260,6 +260,18 @@ VA-10, then VA-8 and VA-12.
   card that is not there is an error back to the model. First change operation of design
   notes 5.4. **Done in code and unit tests.** Open: whether Gemma 4 E2B uses it on a
   device.
+- **VA-11.1.7** The per-turn context record (design notes 5.3, DD-R36/R37/R39/R41/R42):
+  one `[Screen: …]` block with the screen's goal, the frame (how the person shops, the
+  surface, the keyboard), the active list by the app's ids (`c12 vehicle_card (r3, 22
+  cars) stage focused`) and `changed` (taps, the person's own stage changes, `returned
+  after 40m`). Each field travels only when it changed; nothing when nothing did; an
+  80-token budget drops the oldest items first and marks the cut; the estimate is logged
+  and on the Models screen per turn. `present(action, target: "c12")` names a card by id,
+  and a wrong id gets the stage's list back (DD-R38). The app's goal is a line of the
+  opening context (DD-R35). After ten minutes away the model gets a quiet turn in which
+  it may say where the person left off (DD-R14). **Done in code and unit tests.** Open:
+  the budget measured on a phone (DD-Q25); the display agent still gets its own one-line
+  state, not the record (5.1).
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
