@@ -277,6 +277,16 @@ VA-10, then VA-8 and VA-12.
   no turn; the model hears `the person set aside c7 choice` with the next one. **Done in
   code and unit tests.** Open: "minimized" (kept on screen, smaller) is not built; the
   dismiss covers the escape the requirement is for.
+- **VA-11.1.9** Round of 2026-11-10, from the owner's answers: the record in compact
+  keys with a legend read once (C28); `replaces` (Q105); a display decision about a
+  screen that has since changed is dropped (Q105); focus and close reach the
+  conversation's cards; the ask-with-a-card rule sharpened and every prompt example in
+  words (Q99); `docs/REQUIREMENTS.md` with status, device date and "done when" (Q106).
+  Found on the headless emulator and fixed: a `present(...)` example copied into the
+  reply as text (now run as a call); a choice without its question (now shown); the
+  record's own `[Screen …]` echoed in a reply (now removed). **Done.** Device: the
+  warm-up (first tap 1.4 to 2.3 s, was 12 to 14 s), Back and return, the offline note,
+  the record and the model's first choice card for "help me decide".
 - **VA-1.4.4** Tool results fit the window: a page read is trimmed to the context
   remaining, and old tool results leave the history before the window fills (measured: a
   4,096 window overflowed on the third turn; `clearHistory(replayHistory:)` is the
