@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import '../guard/input_guard.dart';
 import '../guard/narration_guard.dart';
@@ -417,7 +418,10 @@ class TurnPipeline {
       return {'error': error};
     }
 
-    final id = args['target']?.toString().trim();
+    // The id alone, from what a small model writes around it ("c2
+    // search_filters", "card 12").
+    final idMatch = RegExp(r'c?(\d+)').firstMatch(args['target']?.toString() ?? '');
+    final id = idMatch == null ? null : 'c${idMatch.group(1)}';
     final componentId = args['component']?.toString();
     final component = componentId == null ? null : ComponentRegistry.byId(componentId);
     if ((id == null || id.isEmpty) && component == null) {
@@ -585,6 +589,19 @@ class TurnPipeline {
       out.add(GuardTripped(report, replaced: false));
     }
 
+    // A `present(...)` call written as text (Gemma 4 E2B copied the
+    // prompt's example into its reply on the headless emulator, 2026-11-10):
+    // it never reaches the person as code, and it is run as the call it
+    // meant to be, so the screen still changes.
+    final written = extractWrittenCalls(narration);
+    if (written.calls.isNotEmpty) {
+      narration = written.remainder;
+      for (final args in written.calls) {
+        await _runPresent(out, args);
+      }
+      out.add(NarrationReplaced(narration));
+    }
+
     // A model that writes "choice: option1: ..." meant to present a choice.
     // The app renders it as one and drops the prose list: the person should
     // get the tappable answers the model intended, not a transcript of the
@@ -664,6 +681,55 @@ String stripLeakedToolCalls(String text) {
   }
   out = out.replaceAll(RegExp(r'<\/?tool_call>|<\/?function_call>|```(?:json|tool_code)?'), ' ');
   return out.replaceAll(RegExp(r'[ \t]{2,}'), ' ').trim();
+}
+
+/// `present(...)` calls a model wrote into its reply as text, with the reply
+/// left once they are removed. Arguments are read in the shape the prompt
+/// shows (`key: "value", key: [{id: "a", label: "A"}]`); a call whose
+/// arguments cannot be read is still removed from the text, so code never
+/// reaches the person.
+({List<Map<String, Object?>> calls, String remainder}) extractWrittenCalls(String text) {
+  final calls = <Map<String, Object?>>[];
+  var out = text;
+  var i = out.indexOf('present(');
+  while (i >= 0) {
+    final open = i + 'present'.length;
+    var depth = 0;
+    var quoted = false;
+    var j = open;
+    for (; j < out.length; j++) {
+      final c = out[j];
+      if (c == '"') quoted = !quoted;
+      if (quoted) continue;
+      if (c == '(' || c == '[' || c == '{') depth++;
+      if (c == ')' || c == ']' || c == '}') {
+        depth--;
+        if (depth == 0) break;
+      }
+    }
+    if (j >= out.length) {
+      // Unclosed: the reply was cut off mid-call. Drop the rest.
+      out = out.substring(0, i);
+      break;
+    }
+    final args = _readWrittenArgs(out.substring(open + 1, j));
+    if (args != null) calls.add(args);
+    out = out.replaceRange(i, j + 1, ' ');
+    i = out.indexOf('present(', i);
+  }
+  return (calls: calls, remainder: out.replaceAll(RegExp(r'[ \t]{2,}'), ' ').trim());
+}
+
+Map<String, Object?>? _readWrittenArgs(String inner) {
+  // Bare keys become JSON keys; strings are already double-quoted.
+  final json =
+      '{${inner.replaceAllMapped(RegExp(r'(^|[{,\s])([A-Za-z_]\w*)\s*:'), (m) => '${m[1]}"${m[2]}":')}}';
+  try {
+    final v = jsonDecode(json);
+    return v is Map ? Map<String, Object?>.from(v) : null;
+  } on FormatException {
+    return null;
+  }
 }
 
 bool _looksLikeToolCall(String json) =>

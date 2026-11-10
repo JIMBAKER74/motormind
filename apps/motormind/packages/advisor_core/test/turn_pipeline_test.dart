@@ -379,6 +379,44 @@ void main() {
     expect(events.whereType<Presented>(), isEmpty);
   });
 
+  test('a present call written as text is run, and never shown as code', () async {
+    // What Gemma 4 E2B replied to "help me decide" on the headless emulator,
+    // 2026-11-10, after copying the prompt's example.
+    final driver = FakeDriver([
+      FakeTurn(text: (r) => 'present(action: "focus", target: "c2 search_filters")'),
+    ]);
+    final targets = <String>[];
+    final pipeline = TurnPipeline(
+      driver: driver,
+      arrange: (action, target) {
+        targets.add('${action.name} $target');
+        return null;
+      },
+    );
+    final events = await pipeline.run('help me decide').toList();
+    expect(targets, ['focus c2']);
+    expect(events.whereType<NarrationReplaced>().last.text, isEmpty);
+    expect(events.whereType<TurnDone>().single.narration, isEmpty);
+  });
+
+  test('written calls: arguments in the prompt\'s shape, prose kept, junk only removed', () {
+    final w = extractWrittenCalls(
+      'Let me ask. present(component: "choice", question: "What matters most?", options: '
+      '[{id: "room", label: "Room"}, {id: "cost", label: "Low cost (under 20k)"}]) Pick one.',
+    );
+    expect(w.remainder, 'Let me ask. Pick one.');
+    expect(w.calls.single['component'], 'choice');
+    expect((w.calls.single['options'] as List).last, {
+      'id': 'cost',
+      'label': 'Low cost (under 20k)',
+    });
+    final junk = extractWrittenCalls('Sure. present(component: choice, ???)');
+    expect(junk.calls, isEmpty);
+    expect(junk.remainder, 'Sure.');
+    expect(extractWrittenCalls('Cut off present(action: "fo').remainder, 'Cut off');
+    expect(extractWrittenCalls('No calls here (really).').calls, isEmpty);
+  });
+
   test('present with an action but no screen to arrange is an error, not a new card', () async {
     final driver = FakeDriver([
       FakeTurn(
