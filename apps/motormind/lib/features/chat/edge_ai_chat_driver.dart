@@ -94,14 +94,15 @@ final class EdgeAiChatDriver implements ChatDriver {
   }
 
   /// A tool the model calls here is answered as cancelled and never run: the
-  /// person has asked for nothing yet.
+  /// person has asked for nothing yet. The answer is left to finish: a turn
+  /// stopped partway makes the engine rebuild the conversation and replay its
+  /// history before the next turn, which took the first tap from 1.4 s to
+  /// 14 s on the headless emulator (2026-11-10); a short answer costs about a
+  /// second of decoding.
   @override
   Future<void> warmUp(String text) async {
     try {
-      final chunks = send(text, onToolCall: (_, _) async => const {'status': 'cancelled'});
-      await for (final _ in chunks) {
-        await cancel();
-      }
+      await send(text, onToolCall: (_, _) async => const {'status': 'cancelled'}).drain<void>();
     } catch (e) {
       logDev('warm-up failed: $e');
     }

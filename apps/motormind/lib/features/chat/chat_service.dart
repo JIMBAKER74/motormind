@@ -139,14 +139,14 @@ final class ChatService extends Notifier<ChatState> {
   /// is about to need.
   Future<void>? _warming;
 
-  /// Longest the warm-up may run. It ends by itself at the model's first
-  /// output, 12 to 14 s on the slowest device measured; past this limit
-  /// something is wrong and the person's turn should not wait on it.
+  /// Longest the warm-up may run. It ends by itself after the prefill and a
+  /// short answer, 10 to 14 s on the slowest device measured; past this
+  /// limit something is wrong and the person's turn should not wait on it.
   static const warmUpLimit = Duration(seconds: 45);
 
   /// What the model is told at the warm-up. The model answers a bracketed
-  /// line with a component, a short line or nothing, and the driver stops
-  /// it at its first output either way.
+  /// line with a component, a short line or nothing; nothing it says is
+  /// shown.
   static const _warmUpCue = '[The app just opened. Nothing to answer yet.]';
 
   /// Processes the opening context while the person looks at the cards, so
