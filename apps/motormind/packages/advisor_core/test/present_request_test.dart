@@ -292,4 +292,24 @@ void main() {
       isNot(contains('replaces')),
     );
   });
+
+  test('a choice with options but no question is shown, with a neutral question', () {
+    // What Gemma 4 E2B sent for "help me decide" (headless emulator,
+    // 2026-11-10): options, a stray form field, no question.
+    final v = PresentRequest.validate({
+      'component': 'choice',
+      'options': [
+        {'id': 'room', 'label': 'Room'},
+        {'id': 'cost', 'label': 'Low cost'},
+        {'id': 'fun', 'label': 'Fun to drive'},
+      ],
+      'fields': [
+        {'id': 'x', 'label': 'X', 'type': 'text'},
+      ],
+    }, resultTool: null);
+    expect(v.errors, isEmpty);
+    expect(v.request!.props['question'], defaultChoiceQuestion);
+    // Without options there is still nothing to show.
+    expect(PresentRequest.validate({'component': 'choice'}, resultTool: null).errors, isNotEmpty);
+  });
 }

@@ -80,6 +80,13 @@ const int maxMultiChoiceOptions = 8;
 /// Most fields an `input_form` may ask for before it is a tax return.
 const int maxFormFields = 6;
 
+/// The question a choice gets when the model sent options without one.
+/// Gemma 4 E2B did, putting the question in its sentence instead (headless
+/// emulator, 2026-11-10); refusing the card left the person with a prose
+/// list to read. Neutral, because the model's own sentence above it says
+/// what is being asked.
+const String defaultChoiceQuestion = 'Which of these?';
+
 /// Validates the `question` and `options` of a choice-style component
 /// without changing them. More than [max] options is not an error; the
 /// request keeps the first [max] (see [PresentRequest.validate]), because a
@@ -396,6 +403,12 @@ final class PresentRequest {
         ? _strayProps(args) ?? given
         : given;
     final props = takesProps ? _propsOf(component, rawProps) : null;
+    if (props != null &&
+        (component.id == 'choice' || component.id == 'multi_choice') &&
+        props['options'] is List &&
+        '${props['question'] ?? ''}'.trim().isEmpty) {
+      props['question'] = defaultChoiceQuestion;
+    }
     if (props != null) errors.addAll(component.validateProps?.call(props) ?? const []);
     if (component.isInteraction) {
       // Built from props alone.

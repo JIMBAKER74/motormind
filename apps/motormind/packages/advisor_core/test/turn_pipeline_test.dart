@@ -399,6 +399,15 @@ void main() {
     expect(events.whereType<TurnDone>().single.narration, isEmpty);
   });
 
+  test('the app\'s own context lines echoed in a reply are taken out', () {
+    expect(
+      stripLeakedToolCalls('[Screen help me decide] I understand. What matters most?'),
+      'I understand. What matters most?',
+    );
+    expect(stripLeakedToolCalls('Fine [Listings: viewed 2 (Honda).] then.'), 'Fine then.');
+    expect(stripLeakedToolCalls('A [bracketed] aside stays.'), 'A [bracketed] aside stays.');
+  });
+
   test('written calls: arguments in the prompt\'s shape, prose kept, junk only removed', () {
     final w = extractWrittenCalls(
       'Let me ask. present(component: "choice", question: "What matters most?", options: '

@@ -680,6 +680,10 @@ String stripLeakedToolCalls(String text) {
     }
   }
   out = out.replaceAll(RegExp(r'<\/?tool_call>|<\/?function_call>|```(?:json|tool_code)?'), ' ');
+  // The app's own context lines, echoed back: Gemma 4 E2B began a reply with
+  // "[Screen help me decide]" after the record became short keys (headless
+  // emulator, 2026-11-10). What the app told the model is never the reply.
+  out = out.replaceAll(RegExp(r'\[(?:Screen|Listings|Already set|A filter card)\b[^\]]*\]'), ' ');
   return out.replaceAll(RegExp(r'[ \t]{2,}'), ' ').trim();
 }
 
