@@ -1,3 +1,4 @@
+import '../context/context_record.dart';
 import '../profile/buyer_profile.dart';
 import '../ui/ui_spec.dart';
 
@@ -69,15 +70,17 @@ const String appGoal =
 /// it from the registry.
 const String _screenSection =
     '# Screen\n'
-    'After a tool returns, call present(component, result_id) so the numbers are shown as a card; '
-    'then one or two sentences at most. To ask something with a few possible answers, or to '
-    'collect numbers, call present with choice/multi_choice/input_form instead of asking in prose, '
-    'for example present(component: "choice", question: "What matters most?", options: [{id: '
-    '"room", label: "Room"}, {id: "cost", label: "Low cost"}]). When the person is unsure what '
-    'they want, ask that way. To bring back or remove a card in the [Screen] active list, '
-    'name its id: present(action: "focus", target: "c12") or action: "close". '
-    'One structured prompt per turn. A line in [brackets] is what the app saw on screen, not the '
-    'person\'s words: answer it with a component, a short line, or nothing.';
+    'After a tool returns, call the present tool with its component and result_id, so the '
+    'numbers are shown as a card; then one or two sentences at most. Ask with a card, never in '
+    'prose: for a question with a few answers, call present with component choice, a question '
+    'and two to four options; for numbers to collect, component input_form. When the person is '
+    'unsure ("help me decide", "not sure", "what would you get?"), do not pick cars for them: '
+    'first ask one choice, such as the question "What matters most?" with the options Room, '
+    'Low cost and Fun to drive, and show listings after they answer. To bring back or remove a '
+    'card on screen, call present with action focus or close and target set to its id, such as '
+    'c12. Never write a tool call as text. One structured prompt per turn. A line in [brackets] '
+    'is what the app saw on screen, not the person\'s words: answer it with a component, a '
+    'short line, or nothing.';
 
 /// Assembles the system prompt from editable text sections plus the fixed
 /// contract sections, the component vocabulary and the live situation
@@ -124,6 +127,7 @@ class SystemPromptBuilder {
       ..writeln(_pagesSection)
       ..writeln()
       ..writeln(_screenSection)
+      ..writeln(ContextRecorder.legend)
       ..writeln('Components:')
       ..writeln(ComponentRegistry.describeForPrompt())
       ..writeln();

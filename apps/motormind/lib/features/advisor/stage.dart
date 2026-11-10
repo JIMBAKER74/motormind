@@ -93,7 +93,7 @@ final class StageNotifier extends Notifier<StageState> {
   /// Shows card [i] large (from the chip strip).
   void focusCard(int i) {
     assert(i >= 0 && i < state.cards.length, 'card index $i out of range');
-    _byPerson.add('the person opened c${state.cards[i].id}');
+    _byPerson.add('opened c${state.cards[i].id}');
     state = state.copyWith(focus: i.clamp(0, state.cards.length - 1), mode: StageMode.cards);
   }
 
@@ -132,7 +132,7 @@ final class StageNotifier extends Notifier<StageState> {
 
   /// From the person's own Web/Cards control.
   void setMode(StageMode m) {
-    if (m != state.mode) _byPerson.add('the person switched the stage to ${m.name}');
+    if (m != state.mode) _byPerson.add('switched to ${m.name}');
     state = state.copyWith(mode: m, userSet: true);
   }
 

@@ -87,6 +87,9 @@ class ScriptedDriver implements ChatDriver {
       // A card already on screen, focused rather than presented again.
       await onToolCall('present', {'component': 'vehicle_card', 'action': 'focus'});
       yield const DriverText('Here is the list again.');
+    } else if (RegExp(r'focus (c\d+)$').firstMatch(userText) case final m?) {
+      await onToolCall('present', {'action': 'focus', 'target': m.group(1)});
+      yield const DriverText('There.');
     } else if (RegExp(r'close (c\d+)$').firstMatch(userText) case final m?) {
       await onToolCall('present', {'action': 'close', 'target': m.group(1)});
       yield const DriverText('Done.');
@@ -389,27 +392,30 @@ void main() {
       );
       // The warm-up carried the first screen line.
       final first = s.driver.warmUps.single;
-      expect(s.driver.prompts.last, isNot(contains('[Screen:')));
-      // The record (design notes 5.3): the screen's goal, the frame, and the
-      // active list by the app's ids, region and state.
-      expect(first, contains('[Screen: goal: answering "How are you shopping today?"'));
-      expect(first, contains('the person is not yet saying how they shop; docked, stage cards'));
-      expect(first, contains('keyboard down'));
-      expect(first, contains('choice ("How are you shopping today?") conversation expanded'));
+      expect(s.driver.prompts.last, isNot(contains('[Screen ')));
+      // The record (design notes 5.3) in its compact form: the goal names
+      // the live question by id; the active list is by region, with * for
+      // the card shown large.
       expect(
         first,
-        matches(RegExp(r'c\d+ vehicle_card \(search-\d+, 2 cars, L1-L2\) stage focused')),
+        matches(
+          RegExp(
+            r'\[Screen goal=answer c\d+; mode="not said yet"; panel=docked; view=cards; kb=down; ',
+          ),
+        ),
       );
-      expect(ContextRecorder.estimateTokens(first), lessThanOrEqualTo(80));
-      // Never a price in the screen line.
-      expect(RegExp(r'\[Screen:[^\]]*\$').hasMatch(first), isFalse);
+      expect(first, matches(RegExp(r'conv=c\d+ choice "How are you shopping today\?"')));
+      expect(first, matches(RegExp(r'stage=c\d+\* vehicle_card search-\d+ 2 cars\]')));
+      expect(ContextRecorder.estimateTokens(first), lessThanOrEqualTo(55));
+      // Never a price in the record.
+      expect(RegExp(r'\[Screen[^\]]*\$').hasMatch(first), isFalse);
       // The same screen next turn: no line at all.
       await _turn(
         tester,
         s,
         () => s.container.read(chatServiceProvider.notifier).send('just looking still'),
       );
-      expect(s.driver.prompts.last, isNot(contains('[Screen:')));
+      expect(s.driver.prompts.last, isNot(contains('[Screen ')));
     });
 
     testWidgets('what changed travels with the next turn: the person\'s taps on the stage', (
@@ -422,13 +428,13 @@ void main() {
       await tester.pumpAndSettle();
       await _turn(tester, s, () => chat.send('just looking still'));
       final p = s.driver.prompts.last;
-      expect(p, contains('changed: the person switched the stage to web'));
+      expect(p, contains('new=switched to web'));
       // The frame and the active list changed with it (the cards are
       // hidden); the goal did not (the opening question is still live), so
       // it is not sent again.
-      expect(p, contains('stage web'));
-      expect(p, contains('stage hidden'));
-      expect(p, isNot(contains('goal:')));
+      expect(p, contains('view=web'));
+      expect(p, matches(RegExp(r'stage=c\d+~ vehicle_card')));
+      expect(p, isNot(contains('goal=')));
       // The turn's stats carry the context's size.
       expect(s.container.read(turnStatsProvider).first.contextTokens, greaterThan(0));
     });
@@ -450,7 +456,7 @@ void main() {
       await _turn(tester, s, () async => chat.appShown(now: t0.add(const Duration(minutes: 40))));
       final p = s.driver.prompts.last;
       expect(p, contains('came back after 40m'));
-      expect(p, contains('changed: returned after 40m'));
+      expect(p, contains('new=returned 40m'));
       expect(s.container.read(turnStatsProvider).first.detail, 'returned');
       // No bubble for the person, who said nothing.
       expect(
@@ -462,7 +468,7 @@ void main() {
     testWidgets('the session warms up at launch, and a first turn waits for it', (tester) async {
       final gate = Completer<void>();
       final s = await _start(tester, warmGate: gate);
-      expect(s.driver.warmUps.single, contains('[Screen:'));
+      expect(s.driver.warmUps.single, contains('[Screen '));
       final sent = s.container.read(chatServiceProvider.notifier).send('hello there');
       await tester.pump();
       // The person's words are on screen at once; the model gets them when
@@ -476,7 +482,7 @@ void main() {
       });
       await tester.pumpAndSettle();
       // The warm-up already told it what is on screen.
-      expect(s.driver.prompts.single, isNot(contains('[Screen:')));
+      expect(s.driver.prompts.single, isNot(contains('[Screen ')));
       final triggers = s.container.read(turnStatsProvider).map((t) => t.trigger);
       expect(triggers, [TurnTrigger.typed, TurnTrigger.warmUp]);
     });
@@ -538,9 +544,41 @@ void main() {
         () => s.container.read(chatServiceProvider.notifier).send('just looking around'),
       );
       final p = s.driver.prompts.last;
-      expect(p, matches(RegExp(r'changed: the person set aside c\d+ choice')));
+      expect(p, matches(RegExp(r'new=set aside c\d+')));
       // Off the active list too: nothing is live in the conversation.
-      expect(p, isNot(contains('conversation expanded')));
+      expect(p, contains('conv=none'));
+    });
+
+    testWidgets('the model opens the filters card or sets a question aside by its id', (
+      tester,
+    ) async {
+      final s = await _start(tester, fullscreen: false);
+      await _chooseMode(tester, s, 'browsing');
+      final chat = s.container.read(chatServiceProvider.notifier);
+      int idOf(String component) => s.container
+          .read(chatServiceProvider)
+          .timeline
+          .whereType<ComponentEntry>()
+          .lastWhere((e) => e.shown.request.component.id == component)
+          .shown
+          .id;
+      await _turn(tester, s, () => chat.send('focus c${idOf('search_filters')}'));
+      expect(s.container.read(searchProvider).userExpanded, isTrue);
+      final question = s.container
+          .read(chatServiceProvider)
+          .timeline
+          .whereType<ComponentEntry>()
+          .where((e) => e.shown.request.component.id == 'choice' && !e.shown.answered)
+          .lastOrNull;
+      if (question != null) {
+        await _turn(tester, s, () => chat.send('close c${question.shown.id}'));
+        final after = s.container
+            .read(chatServiceProvider)
+            .timeline
+            .whereType<ComponentEntry>()
+            .firstWhere((e) => e.shown.id == question.shown.id);
+        expect(after.shown.dismissed, isTrue);
+      }
     });
 
     testWidgets('tapping an opening mode chip sets the mode and sends a sentence', (tester) async {
@@ -748,7 +786,7 @@ void main() {
       await _turn(tester, s, () => chat.send('close c999'));
       expect(s.container.read(stageProvider).cards, hasLength(count));
       final listingsId = now.cards.firstWhere((c) => c.request.component.id == 'vehicle_card').id;
-      expect(s.driver.prompts.last, contains('active: '));
+      expect(s.driver.prompts.last, contains('stage='));
       await _turn(tester, s, () => chat.send('close c$listingsId'));
       now = s.container.read(stageProvider);
       expect(now.cards.map((c) => c.request.component.id), isNot(contains('vehicle_card')));

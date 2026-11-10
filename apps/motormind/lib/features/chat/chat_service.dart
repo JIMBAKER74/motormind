@@ -219,10 +219,10 @@ final class ChatService extends Notifier<ChatState> {
     _changed.clear();
     return ContextRecord(
       goal: _screenGoal(),
-      frame:
-          'the person is ${mode?.words ?? 'not yet saying how they shop'}; '
-          '${surface.name}, stage ${stage.mode.name}; '
-          'keyboard ${ref.read(keyboardOpenProvider) ? 'up' : 'down'}',
+      mode: mode?.words,
+      panel: surface.name,
+      view: stage.mode.name,
+      keyboardUp: ref.read(keyboardOpenProvider),
       active: _activeList(),
       changed: changed,
     );
@@ -261,19 +261,20 @@ final class ChatService extends Notifier<ChatState> {
               : ComponentState.summary,
           detail: switch (c.request.component.id) {
             'vehicle_card' => switch (listingsOf(c.result).length) {
-              0 => '${c.result?.id}, none',
-              final n => '${c.result?.id}, $n cars, L1-L$n',
+              0 => '${c.result?.id} none',
+              final n => '${c.result?.id} $n cars',
             },
-            'vehicle_compare' => (c.request.props['ids'] as List?)?.join(', ') ?? '',
+            'vehicle_compare' => (c.request.props['ids'] as List?)?.join(' ') ?? '',
             _ => c.result?.id ?? '',
           },
         ),
     ];
   }
 
-  /// What the screen is deciding right now, one line (design notes 5.7,
-  /// DD-Q20's default): the newest live question, else the page, else the
-  /// card shown large. Null when nothing is being decided.
+  /// What the screen is deciding right now, in a few words naming ids
+  /// (design notes 5.7, DD-Q20's default): the newest live question, else
+  /// the page, else the card shown large. Null when nothing is being
+  /// decided. The question's own words are already in the active list.
   String? _screenGoal() {
     final live = state.timeline.reversed
         .whereType<ComponentEntry>()
@@ -286,35 +287,61 @@ final class ChatService extends Notifier<ChatState> {
         )
         .firstOrNull;
     if (live != null) {
-      return live.request.component.id == 'input_form'
-          ? 'filling in ${live.request.title ?? 'a form'}'
-          : 'answering "${_clip('${live.request.props['question'] ?? ''}')}"';
+      return '${live.request.component.id == 'input_form' ? 'fill in' : 'answer'} c${live.id}';
     }
     final stage = ref.read(stageProvider);
     if (stage.mode == StageMode.web) {
-      return 'looking at the ${CuratedSites.nameFor(ref.read(searchProvider).siteId)} page';
+      return 'read the ${CuratedSites.nameFor(ref.read(searchProvider).siteId)} page';
     }
     final f = stage.focused;
     if (f == null) return null;
     return switch (f.request.component.id) {
-      'vehicle_card' => switch (listingsOf(f.result).length) {
-        0 => null,
-        final n => 'choosing which of $n cars to look at',
-      },
-      'vehicle_compare' =>
-        'comparing ${(f.request.props['ids'] as List?)?.join(' and ') ?? 'listings'}',
-      final id => 'reading the $id card',
+      'vehicle_card' => listingsOf(f.result).isEmpty ? null : 'pick from c${f.id}',
+      'vehicle_compare' => 'compare c${f.id}',
+      _ => 'read c${f.id}',
     };
   }
 
-  /// The pipeline's [ArrangeHandler]: the stage applies it, or the model is
-  /// told what is on the stage (DD-R38: an invalid reference returns the
-  /// list).
+  /// The pipeline's [ArrangeHandler]. A stage card is focused or closed by
+  /// the stage. A card live in the conversation is opened or set aside: the
+  /// filters card expands or collapses, a question is set aside as if the
+  /// person had (the model asked for "help me decide" to focus the filters
+  /// card on the headless emulator, 2026-11-10). Anything else gets the
+  /// active list back (DD-R38).
   String? _arrange(ArrangeAction action, ArrangeTarget target) {
     if (ref.read(stageProvider.notifier).arrange(action, target)) return null;
-    final onStage = _activeList().where((a) => a.region == Region.stage).map((a) => a.describe());
-    return '$target is not a card on the stage. On the stage: '
-        '${onStage.isEmpty ? 'nothing' : onStage.join('; ')}.';
+    final shown = state.timeline
+        .whereType<ComponentEntry>()
+        .map((e) => e.shown)
+        .where(
+          (s) =>
+              !s.answered &&
+              s.request.component.isInteraction &&
+              (target.id != null
+                  ? 'c${s.id}' == target.id
+                  : s.request.component.id == target.componentId),
+        )
+        .lastOrNull;
+    if (shown == null) {
+      final active = _activeList().map((a) => a.describe());
+      return '$target is not on screen. On screen: '
+          '${active.isEmpty ? 'nothing' : active.join(' | ')}.';
+    }
+    final filters = shown.request.component.id == 'search_filters';
+    switch (action) {
+      case ArrangeAction.focus:
+        if (filters) ref.read(searchProvider.notifier).setExpanded(true);
+        if (ref.read(surfaceProvider) == SurfaceState.collapsed) {
+          ref.read(surfaceProvider.notifier).request(SurfaceState.docked);
+        }
+      case ArrangeAction.close:
+        if (filters) {
+          ref.read(searchProvider.notifier).setExpanded(false);
+        } else {
+          _setAside(shown);
+        }
+    }
+    return null;
   }
 
   /// When the app went to the background; null while in front.
@@ -332,7 +359,7 @@ final class ChatService extends Notifier<ChatState> {
   void appHidden({DateTime? now}) => _hiddenAt = now ?? DateTime.now();
 
   /// The app is in front again. The absence goes into the next record as
-  /// `returned after …` (design notes 5.5); after [returnCueAfter], in a
+  /// `returned 40m` (design notes 5.5); after [returnCueAfter], in a
   /// conversation the person has spoken in, the model gets a quiet turn in
   /// which it may orient them or say nothing.
   void appShown({DateTime? now}) {
@@ -342,7 +369,7 @@ final class ChatService extends Notifier<ChatState> {
     final away = (now ?? DateTime.now()).difference(at);
     if (away < returnNoteAfter) return;
     final words = away.inHours >= 1 ? '${away.inHours}h' : '${away.inMinutes}m';
-    _changed.add('returned after $words');
+    _changed.add('returned $words');
     final spoke = state.messages.any((m) => m.role == MessageRole.user);
     if (away < returnCueAfter || !spoke || !state.ready || state.busy) return;
     unawaited(
@@ -878,6 +905,11 @@ final class ChatService extends Notifier<ChatState> {
   /// and the model hears about it with the next turn.
   void dismiss(ShownComponent source) {
     if (source.answered) return;
+    _setAside(source);
+    _changed.add('set aside c${source.id}');
+  }
+
+  void _setAside(ShownComponent source) {
     state = state.copyWith(
       timeline: [
         for (final e in state.timeline)
@@ -887,7 +919,6 @@ final class ChatService extends Notifier<ChatState> {
             e,
       ],
     );
-    _changed.add('the person set aside c${source.id} ${source.request.component.id}');
   }
 
   void _markAnswered(ShownComponent? source) {
