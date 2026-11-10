@@ -272,4 +272,24 @@ void main() {
     expect(form.errors, isEmpty);
     expect((form.request!.props['fields'] as List).single, containsPair('id', 'down'));
   });
+
+  test('replaces names the card it takes the place of, read as its id', () {
+    Map<String, Object?> choice(Object? replaces) => {
+      'component': 'choice',
+      'question': 'Which matters more?',
+      'options': [
+        {'id': 'price', 'label': 'Price'},
+        {'id': 'miles', 'label': 'Miles'},
+      ],
+      'replaces': ?replaces,
+    };
+    expect(PresentRequest.validate(choice('c7'), resultTool: null).request!.replaces, 'c7');
+    expect(PresentRequest.validate(choice('c7 choice'), resultTool: null).request!.replaces, 'c7');
+    expect(PresentRequest.validate(choice(null), resultTool: null).request!.replaces, isNull);
+    // Not a prop of the card.
+    expect(
+      PresentRequest.validate(choice('c7'), resultTool: null).request!.props,
+      isNot(contains('replaces')),
+    );
+  });
 }

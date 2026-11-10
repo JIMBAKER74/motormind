@@ -86,6 +86,17 @@ final class StageNotifier extends Notifier<StageState> {
     );
   }
 
+  /// Puts [c] in the place of the card with the app's [id] ("c12") and
+  /// shows it large; the old card leaves the stage. False when no card has
+  /// that id (design notes 5.4, `replaces`).
+  bool replace(String id, ShownComponent c) {
+    final i = state.cards.indexWhere((s) => 'c${s.id}' == id);
+    if (i < 0) return false;
+    final cards = [...state.cards]..[i] = c;
+    state = state.copyWith(cards: cards, focus: i, mode: StageMode.cards, userSet: false);
+    return true;
+  }
+
   /// Drops the cards matching [test] and focuses the newest remaining one.
   void removeWhere(bool Function(ShownComponent) test) =>
       state = state.copyWith(cards: state.cards.where((s) => !test(s)).toList(), focus: 0);

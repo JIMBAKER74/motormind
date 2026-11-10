@@ -78,7 +78,8 @@ const String _screenSection =
     'first ask one choice, such as the question "What matters most?" with the options Room, '
     'Low cost and Fun to drive, and show listings after they answer. To bring back or remove a '
     'card on screen, call present with action focus or close and target set to its id, such as '
-    'c12. Never write a tool call as text. One structured prompt per turn. A line in [brackets] '
+    'c12; to swap a card for a better one, present the new one with replaces set to the old '
+    'card\'s id. Never write a tool call as text. One structured prompt per turn. A line in [brackets] '
     'is what the app saw on screen, not the person\'s words: answer it with a component, a '
     'short line, or nothing.';
 

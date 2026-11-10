@@ -87,6 +87,24 @@ class ScriptedDriver implements ChatDriver {
       // A card already on screen, focused rather than presented again.
       await onToolCall('present', {'component': 'vehicle_card', 'action': 'focus'});
       yield const DriverText('Here is the list again.');
+    } else if (RegExp(r'ask again (c\d+)$').firstMatch(userText) case final m?) {
+      await onToolCall('present', {
+        'component': 'choice',
+        'question': 'Which matters more?',
+        'options': [
+          {'id': 'room', 'label': 'Room'},
+          {'id': 'cost', 'label': 'Low cost'},
+        ],
+        'replaces': m.group(1),
+      });
+      yield const DriverText('Let me ask it another way.');
+    } else if (RegExp(r'only (L\d+) instead of (c\d+)$').firstMatch(userText) case final m?) {
+      await onToolCall('present', {
+        'component': 'vehicle_card',
+        'ids': [m.group(1)],
+        'replaces': m.group(2),
+      });
+      yield const DriverText('Just that one.');
     } else if (RegExp(r'focus (c\d+)$').firstMatch(userText) case final m?) {
       await onToolCall('present', {'action': 'focus', 'target': m.group(1)});
       yield const DriverText('There.');
@@ -581,6 +599,32 @@ void main() {
       }
     });
 
+    testWidgets('a new question can take an old one\'s place in the conversation', (tester) async {
+      final s = await _start(tester);
+      final old = s.container
+          .read(chatServiceProvider)
+          .timeline
+          .whereType<ComponentEntry>()
+          .firstWhere((e) => e.shown.request.component.id == 'choice')
+          .shown;
+      await _turn(
+        tester,
+        s,
+        () => s.container.read(chatServiceProvider.notifier).send('ask again c${old.id}'),
+      );
+      final shown = s.container
+          .read(chatServiceProvider)
+          .timeline
+          .whereType<ComponentEntry>()
+          .map((e) => e.shown)
+          .toList();
+      expect(shown.firstWhere((x) => x.id == old.id).dismissed, isTrue);
+      expect(
+        shown.where((x) => !x.answered).map((x) => x.request.props['question']),
+        contains('Which matters more?'),
+      );
+    });
+
     testWidgets('tapping an opening mode chip sets the mode and sends a sentence', (tester) async {
       final s = await _start(tester);
       await _chooseMode(tester, s, 'practical');
@@ -796,6 +840,31 @@ void main() {
       now = s.container.read(stageProvider);
       expect(now.cards.map((c) => c.request.component.id), isNot(contains('vehicle_compare')));
       expect(find.byKey(const Key('compare-L1')), findsNothing);
+    });
+
+    testWidgets('a card can take another\'s place on the stage, where it was', (tester) async {
+      final s = await _start(tester, fullscreen: false);
+      await _chooseMode(tester, s, 'browsing');
+      await tester.tap(find.text('2021 Honda CR-V EX'));
+      await tester.pumpAndSettle();
+      await _turn(tester, s, () => tester.tap(find.text('2023 BMW X3')));
+      var stage = s.container.read(stageProvider);
+      final compare = stage.cards.firstWhere((c) => c.request.component.id == 'vehicle_compare');
+      final at = stage.cards.indexOf(compare);
+      final count = stage.cards.length;
+      await _turn(
+        tester,
+        s,
+        () => s.container
+            .read(chatServiceProvider.notifier)
+            .send('only L1 instead of c${compare.id}'),
+      );
+      stage = s.container.read(stageProvider);
+      expect(stage.cards, hasLength(count));
+      expect(stage.cards.map((c) => c.id), isNot(contains(compare.id)));
+      expect(stage.cards[at].request.component.id, 'vehicle_card');
+      expect(stage.cards[at].request.props['ids'], ['L1']);
+      expect(stage.focused, same(stage.cards[at]));
     });
 
     testWidgets('three quick taps on one tile make Motormind ask, and a bigger photo follows', (

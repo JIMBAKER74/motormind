@@ -339,6 +339,7 @@ final class PresentRequest {
     this.title,
     this.highlights = const [],
     this.props = const {},
+    this.replaces,
   });
 
   /// The component to show.
@@ -361,6 +362,11 @@ final class PresentRequest {
   /// component renders: an interaction component's question and options, a
   /// compare's listing ids; empty for components that take none.
   final Map<String, Object?> props;
+
+  /// The app's id of a card on screen this one takes the place of ("c12"),
+  /// read as its first `c<number>`; null to add the card as usual (design
+  /// notes 5.4, `replaces`).
+  final String? replaces;
 
   /// Validates the model's arguments against the registry and the tool that
   /// produced [resultTool]. Returns a request or a list of problems the model
@@ -415,6 +421,10 @@ final class PresentRequest {
         title: args['title']?.toString(),
         highlights: highlights,
         props: props ?? const {},
+        replaces: switch (RegExp(r'c?(\d+)').firstMatch(args['replaces']?.toString() ?? '')) {
+          final m? => 'c${m.group(1)}',
+          null => null,
+        },
       ),
       errors: const [],
     );
@@ -460,6 +470,7 @@ final class PresentRequest {
       'props',
       'action',
       'target',
+      'replaces',
     };
     final stray = {
       for (final e in args.entries)

@@ -572,7 +572,24 @@ final class ChatService extends Notifier<ChatState> {
               request: request,
               result: result,
             );
-            if (toStage) {
+            // A card that takes another's place (design notes 5.4): on the
+            // stage it goes where the old one was; a question in the
+            // conversation is set aside for the new one.
+            final replaces = request.replaces;
+            final inPlace =
+                replaces != null &&
+                toStage &&
+                ref.read(stageProvider.notifier).replace(replaces, shown);
+            final setAside = replaces != null && !inPlace && _setAsideById(replaces);
+            if (replaces != null) {
+              logDev(
+                'replaces $replaces: '
+                '${inPlace ? 'in place' : (setAside ? 'set aside' : 'not on screen, added')}',
+              );
+            }
+            if (inPlace) {
+              // Already on the stage, where the old card was.
+            } else if (toStage) {
               ref.read(stageProvider.notifier).show(shown);
             } else {
               // Replace an earlier card for the same result (auto-present then
@@ -907,6 +924,19 @@ final class ChatService extends Notifier<ChatState> {
     if (source.answered) return;
     _setAside(source);
     _changed.add('set aside c${source.id}');
+  }
+
+  /// Sets aside the live conversation card with the app's [id]; false when
+  /// there is none.
+  bool _setAsideById(String id) {
+    final shown = state.timeline
+        .whereType<ComponentEntry>()
+        .map((e) => e.shown)
+        .where((s) => !s.answered && 'c${s.id}' == id && s.request.component.isInteraction)
+        .firstOrNull;
+    if (shown == null) return false;
+    _setAside(shown);
+    return true;
   }
 
   void _setAside(ShownComponent source) {

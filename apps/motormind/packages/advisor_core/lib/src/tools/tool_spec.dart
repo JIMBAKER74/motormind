@@ -284,7 +284,8 @@ abstract final class AdvisorTools {
           'result_id': _string(description: 'from a tool result'),
           'surface': _string(values: ['docked', 'fullscreen']),
           'action': _string(values: ['show', 'focus', 'close'], description: 'default show'),
-          'target': _string(description: 'focus/close: an id from the [Screen] active list'),
+          'target': _string(description: 'focus/close: a card id from [Screen]'),
+          'replaces': _string(description: 'the id of a card this one takes the place of'),
           'title': _string(),
           'highlights': {
             'type': 'array',
