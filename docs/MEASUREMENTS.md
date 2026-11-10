@@ -192,3 +192,19 @@ captured on the phone (recipe v2; `tool/recipe_structure.dart`; the fixture test
 verdict). A second session that morning, with the model picking itself and cards at
 launch, ran without the log attached (the phone had been unplugged and the device's log
 buffer had rotated), so its numbers are lost; the capture it produced is not.
+
+## The warm-up at launch (2026-11-10)
+
+Same headless emulator, airplane mode on (no page is ever loaded), 5.8 GB with 3.4 to 4.1
+GB free, so a 4,096-token window. The warm-up processes the opening context (5,120
+characters, about 1,280 tokens, with the record's legend) while the person looks at the
+screen; the first tap is the opening mode choice.
+
+| Build | Warm-up total | First tap, first word | Note |
+|---|---|---|---|
+| no warm-up (2026-11-02) | – | 12 to 14 s | the first prefill is paid by the tap |
+| warm-up stopped at its first output | 9.8 to 12.8 s | 1.4 s, 2.3 s, and once 14.3 s | the 14.3 s run: the stop landed mid-reply, and the engine rebuilt the conversation (4 messages replayed) before the tap's turn |
+| warm-up allowed to finish (`eeb62e445`) | 10.6 s, 11.4 s | 2.2 s, 1.9 s | no rebuild in either run |
+
+The compact context record on the same runs: about 61 tokens of context with the first
+tap (the record itself 21), 53 with a typed turn (record 13: two keys).
