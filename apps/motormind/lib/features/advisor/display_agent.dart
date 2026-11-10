@@ -444,11 +444,23 @@ final class DisplayController extends Notifier<DisplayDecision> {
       if (gen != _generation) return;
       _lastAsked = key;
       _inFlight = true;
+      final askedStage = ref.read(stageProvider);
       state = state.copyWith(thinking: true);
       try {
         final d = await ModelDisplayAgent(model, prompt).decide(s, defaults);
         logDev('display model=${d.toJson()} rules=${defaults.toJson()} took=${d.tookMs}ms');
-        if (gen == _generation) state = d;
+        // The freshest view of the screen wins (the owner's rule, QUESTIONS
+        // Q105): a decision about a screen that has since changed, by the
+        // person or by the conversation's model, is dropped, and what
+        // changed it stands. The rules have already answered the new state.
+        final stale =
+            !identical(ref.read(stageProvider), askedStage) || _screen().describe() != key;
+        if (stale) {
+          logDev('display stale after ${d.tookMs}ms; the newer screen stands');
+          state = state.copyWith(thinking: false);
+        } else if (gen == _generation) {
+          state = d;
+        }
       } on Exception catch (e) {
         logDev('display model failed: $e');
         if (gen == _generation) {
